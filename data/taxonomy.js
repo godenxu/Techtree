@@ -10,13 +10,15 @@ var TT = (globalThis.TT = globalThis.TT || {});
 TT.taxonomy = {
 
   /* ---------------- 时代：图的横轴，从左到右 ---------------- */
+  /* hue 用于时代色带：靛 → 青 → 绿 → 琥珀 → 紫 → 品红的彩虹递进，
+   * 与 5A 泳道的色相是两套独立通道，泳道走色相底色、时代走色带 + 明度。 */
   eras: [
-    { id: 'E1', roman: 'Ⅰ', name: '电子化时代',   period: '~2000 前',   theme: '账务电子化，主机集中处理' },
-    { id: 'E2', roman: 'Ⅱ', name: '网络化时代',   period: '2000–2010',  theme: '联机互通，电子渠道诞生' },
-    { id: 'E3', roman: 'Ⅲ', name: '数据化时代',   period: '2010–2016',  theme: '数据资产化，决策依赖分析' },
-    { id: 'E4', roman: 'Ⅳ', name: '平台化时代',   period: '2016–2023',  theme: '云原生 + 分布式 + 中台' },
-    { id: 'E5', roman: 'Ⅴ', name: '智能化时代',   period: '2023–2028',  theme: 'AI 原生，实时决策' },
-    { id: 'E6', roman: 'Ⅵ', name: '自主进化时代', period: '2028+',      theme: '智能体驱动，自适应银行' }
+    { id: 'E1', roman: 'Ⅰ', name: '电子化时代',   period: '~2000 前',   hue: 232, theme: '账务电子化，主机集中处理' },
+    { id: 'E2', roman: 'Ⅱ', name: '网络化时代',   period: '2000–2010',  hue: 193, theme: '联机互通，电子渠道诞生' },
+    { id: 'E3', roman: 'Ⅲ', name: '数据化时代',   period: '2010–2016',  hue: 148, theme: '数据资产化，决策依赖分析' },
+    { id: 'E4', roman: 'Ⅳ', name: '平台化时代',   period: '2016–2023',  hue: 41,  theme: '云原生 + 分布式 + 中台' },
+    { id: 'E5', roman: 'Ⅴ', name: '智能化时代',   period: '2023–2028',  hue: 279, theme: 'AI 原生，实时决策' },
+    { id: 'E6', roman: 'Ⅵ', name: '自主进化时代', period: '2028+',      hue: 325, theme: '智能体驱动，自适应银行' }
   ],
 
   /* ---------------- 5A 企业级架构：图的纵轴泳道 ----------------

@@ -69,26 +69,58 @@ TT.model = (function () {
     return { techByCap, capsByDom };
   }
 
-  /* 某个聚合节点（L0/L1）覆盖的全部 L2 技术节点 */
-  function descendants(id, nodes, h) {
-    if (capById.has(id)) return h.techByCap.get(id) || [];
-    if (domById.has(id)) return (h.capsByDom.get(id) || []).flatMap(c => h.techByCap.get(c.id) || []);
-    return nodes.filter(n => n.id === id);
+  /* 某个聚合单元覆盖的技术节点。
+   * 聚合单元的 ID 形如 `D06@E4`（领域 × 时代）或 `C601@E4`（能力 × 时代）——
+   * 一个领域横跨多个时代，硬压成一个格子会让早期和末期的时代整列消失，
+   * 讲演进路径时直接断代。所以聚合层按「主体 × 时代」切分。 */
+  function splitUnitId(id) {
+    const at = String(id).indexOf('@');
+    return at < 0 ? { base: id, era: null } : { base: id.slice(0, at), era: id.slice(at + 1) };
   }
 
-  /* ---------------- 可见节点集：支持三档全局粒度 + 单点混合展开 ----------------
-   * expanded 是一个 Set，含被展开的 L0 / L1 节点 ID。                 */
+  function descendants(id, nodes, h) {
+    const { base, era } = splitUnitId(id);
+    let list;
+    if (capById.has(base)) list = h.techByCap.get(base) || [];
+    else if (domById.has(base)) list = (h.capsByDom.get(base) || []).flatMap(c => h.techByCap.get(c.id) || []);
+    else return nodes.filter(n => n.id === base);
+    return era ? list.filter(t => t.era === era) : list;
+  }
+
+  /* 某个主体（领域 / 能力）在哪些时代里有技术节点，按时代先后返回 */
+  function erasOf(baseId, nodes, h) {
+    const set = new Set(descendants(baseId, nodes, h).map(t => t.era));
+    return tx.eras.filter(e => set.has(e.id)).map(e => e.id);
+  }
+
+  /* ---------------- 可见单元集：三档全局粒度 + 单点混合展开 ----------------
+   * expanded 是一个 Set，含被展开的领域 / 能力 ID（不带 @时代 后缀）。 */
   function visibleUnits(nodes, expanded, h) {
     const out = [];
     tx.domains.forEach(d => {
-      const caps = h.capsByDom.get(d.id) || [];
-      if (!expanded.has(d.id)) { out.push({ kind: 'domain', id: d.id, ref: d }); return; }
-      caps.forEach(c => {
-        if (!expanded.has(c.id)) { out.push({ kind: 'cap', id: c.id, ref: c }); return; }
-        (h.techByCap.get(c.id) || []).forEach(t => out.push({ kind: 'tech', id: t.id, ref: t }));
+      if (!expanded.has(d.id)) {
+        erasOf(d.id, nodes, h).forEach(era =>
+          out.push({ kind: 'domain', id: d.id + '@' + era, base: d.id, era, ref: d }));
+        return;
+      }
+      (h.capsByDom.get(d.id) || []).forEach(c => {
+        if (!expanded.has(c.id)) {
+          erasOf(c.id, nodes, h).forEach(era =>
+            out.push({ kind: 'cap', id: c.id + '@' + era, base: c.id, era, ref: c }));
+          return;
+        }
+        (h.techByCap.get(c.id) || []).forEach(t =>
+          out.push({ kind: 'tech', id: t.id, base: t.id, era: t.era, ref: t }));
       });
     });
     return out;
+  }
+
+  /* 把任意技术节点映射到它当前可见的承载单元 */
+  function carrierOf(n, expanded) {
+    if (expanded.has(n._domain) && expanded.has(n.cap)) return n.id;
+    if (expanded.has(n._domain)) return n.cap + '@' + n.era;
+    return n._domain + '@' + n.era;
   }
 
   /* ---------------- 进度汇总：L1/L0 的完成度由子节点加权得出 ---------------- */
@@ -216,7 +248,7 @@ TT.model = (function () {
     tx, capById, domById, archById, eraIdx, statusById, maturityById,
     adoptionById, autonomyById, tagById, awardsByNode,
     archOfCap, domainOfCap, orgList, orgById, resolve, hierarchy, descendants,
-    visibleUnits, progressOf, maturityOf,
+    visibleUnits, carrierOf, splitUnitId, erasOf, progressOf, maturityOf,
     buildGraph, reach, planClosure, schedule, compare, gapVsBenchmark
   };
 })();

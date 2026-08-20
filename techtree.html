@@ -34,12 +34,12 @@
     <div class="tb-group">
       <span class="tb-label">着色</span>
       <select id="colorSel" class="btn">
-        <option value="status">建设状态 / 成熟度</option>
-        <option value="maturity">技术成熟度</option>
+        <option value="maturity">技术成熟度（行业）</option>
+        <option value="status">本单位建设状态</option>
+        <option value="gap">与行业基准的差距</option>
         <option value="autonomy">信创自主可控</option>
         <option value="value">业务价值</option>
         <option value="award">金融科技发展奖</option>
-        <option value="gap">与基准的差距</option>
       </select>
     </div>
 
@@ -70,6 +70,10 @@
     <canvas id="stars"></canvas>
     <svg id="canvas" xmlns="http://www.w3.org/2000/svg"></svg>
 
+    <!-- 冻结表头：不随缩放改变字号，只跟随平移，保证任何位置都知道当前时代与架构线 -->
+    <div id="eraBar"></div>
+    <div id="laneBar"></div>
+
     <div id="breadcrumb"></div>
 
     <div id="legend"></div>
@@ -80,7 +84,7 @@
       <button class="btn" id="zFit" title="适应窗口">⤢</button>
     </div>
 
-    <div id="hint">滚轮缩放 · 拖拽平移 · 悬停看依赖链 · 单击看详情 · 双击展开下钻</div>
+    <div id="hint">滚轮缩放 · 拖拽平移 · 悬停看依赖链 · 单击看详情 · <b>双击大节点展开</b> · <b>双击技术节点收拢</b> · Esc 逐级收起</div>
 
     <!-- 详情抽屉 -->
     <div id="drawer">

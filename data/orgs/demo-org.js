@@ -167,7 +167,13 @@ TT.orgs.push({
     'T12025': { status:'planned', owner:'信息安全部' },
     'T12031': { status:'planned', owner:'信息安全部' },
     'T12032': { status:'planned', owner:'信息安全部' },
-    'T12033': { status:'none', owner:'信息安全部' }
+    'T12033': { status:'none', owner:'信息安全部' },
+    'T2035': { status:'built', owner:'渠道与零售科技部' },
+    'T1026': { status:'built', owner:'渠道与零售科技部' },
+    'T9026': { status:'built', owner:'基础设施与运维部', note:'2021 年建成，当前主要承载数据湖与影像' },
+    'T11016': { status:'built', owner:'信息安全部' },
+    'T11017': { status:'building', owner:'信息安全部', start:'2024-09', target:'2026-12', note:'国密改造覆盖面广，按系统重要性分批推进，密评整改中' },
+    'T12026': { status:'built', owner:'信息安全部' }
   },
 
   customNodes: []

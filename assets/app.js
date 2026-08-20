@@ -12,8 +12,10 @@
     level: 'domain',
     expanded: new Set(),
     theme: 'A',
-    colorMode: 'status',
+    colorMode: 'maturity',
     tagFilter: '',
+    archFilter: new Set(),
+    legendOff: false,
     search: '',
     selected: null,
     hover: null,
@@ -94,6 +96,13 @@
 
     /* 可见单元 */
     let units = m.visibleUnits(S.nodes, S.expanded, S.h);
+    if (S.archFilter.size) {
+      units = units.filter(u => {
+        const arch = u.kind === 'tech' ? u.ref._arch
+          : (u.kind === 'domain' ? u.ref.arch : m.archOfCap(u.base));
+        return S.archFilter.has(arch);
+      });
+    }
     if (S.tagFilter) {
       units = units.filter(u => {
         if (u.kind === 'tech') return techVisible(u.ref);
@@ -105,8 +114,7 @@
     const visibleUnitIds = new Set(units.map(u => u.id));
     const carrier = id => {
       const n = S.byId.get(id); if (!n) return null;
-      const cand = (S.expanded.has(n._domain) && S.expanded.has(n.cap)) ? n.id
-        : (S.expanded.has(n._domain) ? n.cap : n._domain);
+      const cand = m.carrierOf(n, S.expanded);
       return visibleUnitIds.has(cand) ? cand : null;
     };
     const pairs = S.tagFilter ? contractedPairs()
@@ -132,10 +140,14 @@
       });
     }
 
-    S.L = TT.layout.compute(units, S.nodes, S.h);
+    S.L = TT.layout.compute(units, S.nodes, S.h, S.edges);
     S.units = S.L.units;
 
+    /* 记录上一帧各单元的位置，渲染后做 FLIP 过渡 */
+    const prev = S.prevPos || new Map();
     TT.render.draw($('#canvas'), S.L, S);
+    animateFrom(prev);
+    S.prevPos = new Map(S.units.map(u => [u.id, { x: u.x, y: u.y }]));
     applyTransform();
     paintProgress();
     paintBreadcrumb();
@@ -145,7 +157,70 @@
   }
   TT.rebuild = rebuild;
 
+  /* FLIP：先按旧位置反向位移，再让浏览器动画归零，得到平滑的展开过渡。
+   * 新出现的节点淡入放大，让「炸开」这一下看得清是从哪里出来的。 */
+  function animateFrom(prev) {
+    if (S.noAnim) return;
+    const svg = $('#canvas');
+    svg.querySelectorAll('.node').forEach(g => {
+      const id = g.dataset.id;
+      const now = S.units.find(u => u.id === id); if (!now) return;
+      const old = prev.get(id);
+      if (old) {
+        const dx = old.x - now.x, dy = old.y - now.y;
+        if (Math.abs(dx) < .5 && Math.abs(dy) < .5) return;
+        g.style.transition = 'none';
+        g.style.transform = `translate(${dx}px,${dy}px)`;
+      } else {
+        g.style.transition = 'none';
+        g.style.transformOrigin = `${now.cx}px ${now.cy}px`;
+        g.style.transform = 'scale(.82)';
+        g.style.opacity = '0';
+      }
+    });
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      svg.querySelectorAll('.node').forEach(g => {
+        g.style.transition = 'transform .42s cubic-bezier(.22,.9,.3,1), opacity .34s ease';
+        g.style.transform = 'translate(0,0)';
+        g.style.opacity = '';
+      });
+    }));
+  }
+
   /* ---------------- 视图变换 ---------------- */
+  /* 冻结表头：时代标签横向跟随、架构标签纵向跟随，字号不随缩放变化。
+   * 用 DOM 覆盖层而不是 SVG 内的元素，这样文字任何缩放下都清晰。 */
+  function paintSticky() {
+    if (!S.L) return;
+    const k = S.view.k, W = $('#stage').clientWidth, H = $('#stage').clientHeight;
+    const eraBox = $('#eraBar'), laneBox = $('#laneBar');
+
+    eraBox.innerHTML = S.L.cols.map(c => {
+      const x0 = c.x * k + S.view.x, x1 = (c.x + c.w) * k + S.view.x;
+      if (x1 < 46 || x0 > W) return '';
+      /* 列被拖出屏幕一半时，标签贴边停住，始终能看到当前时代 */
+      const cx = Math.min(Math.max((x0 + x1) / 2, Math.max(x0, 64) + 46), Math.min(x1, W) - 46);
+      const hue = c.era.hue ?? 210;
+      const col = S.theme === 'B' ? `hsl(${hue},55%,42%)` : `hsl(${hue},72%,64%)`;
+      return `<div class="era-chip" style="left:${cx}px">
+        <div class="rm" style="color:${col}">${c.era.roman}</div>
+        <div class="nm">${c.era.name}</div>
+        <div class="pd">${c.era.period}</div>
+        <div class="ul" style="background:${col}"></div>
+      </div>`;
+    }).join('');
+
+    laneBox.innerHTML = S.L.lanes.map(l => {
+      const y0 = l.y * k + S.view.y, y1 = (l.y + l.h) * k + S.view.y;
+      if (y1 < 0 || y0 > H) return '';
+      const cy = Math.min(Math.max((y0 + y1) / 2, Math.max(y0, 0) + 42), Math.min(y1, H) - 42);
+      const col = S.theme === 'B' ? `hsl(${l.hue},58%,44%)` : `hsl(${l.hue},70%,60%)`;
+      const off = S.archFilter.size && !S.archFilter.has(l.id);
+      return `<div class="lane-chip ${off ? 'dim' : ''}" style="top:${cy}px">
+        <span class="cd" style="color:${col}">${l.code}</span> ${l.name}</div>`;
+    }).join('');
+  }
+
   function applyTransform() {
     const svg = $('#canvas');
     svg.setAttribute('viewBox', `0 0 ${$('#stage').clientWidth} ${$('#stage').clientHeight}`);
@@ -157,22 +232,33 @@
       svg.appendChild(g);
     }
     g.setAttribute('transform', `translate(${S.view.x},${S.view.y}) scale(${S.view.k})`);
+    paintSticky();
   }
   function fit() {
-    const st = $('#stage'), pad = 34;
-    const k = Math.min((st.clientWidth - pad * 2) / S.L.width,
-                       (st.clientHeight - pad * 2) / S.L.height, 1.6);
+    const st = $('#stage');
+    /* 给冻结表头、图例、演示面板预留空间，避免内容被浮层压住 */
+    const padT = 66, padL = 66, padR = 24;
+    const padB = S.presenting ? 210 : (S.legendOff ? 40 : 78);
+    const w = st.clientWidth - padL - padR, h = st.clientHeight - padT - padB;
+    const k = Math.min(w / S.L.width, h / S.L.height, 1.6);
     S.view.k = k;
-    S.view.x = (st.clientWidth - S.L.width * k) / 2;
-    S.view.y = (st.clientHeight - S.L.height * k) / 2;
+    S.view.x = padL + (w - S.L.width * k) / 2;
+    S.view.y = padT + (h - S.L.height * k) / 2;
     applyTransform();
   }
   function centerOn(id, zoom) {
     const u = S.units.find(x => x.id === id); if (!u) return;
     const st = $('#stage');
     if (zoom) S.view.k = Math.max(S.view.k, .85);
-    S.view.x = st.clientWidth / 2 - u.cx * S.view.k;
+    /* 抽屉打开时把可视中心左移，否则聚焦的节点正好被详情框盖住 */
+    const drawerW = $('#drawer').classList.contains('open') ? $('#drawer').offsetWidth : 0;
+    S.view.x = (st.clientWidth - drawerW) / 2 - u.cx * S.view.k;
     S.view.y = st.clientHeight / 2 - u.cy * S.view.k;
+    applyTransform();
+  }
+  function panToX(worldX) {
+    const st = $('#stage');
+    S.view.x = st.clientWidth / 2 - worldX * S.view.k;
     applyTransform();
   }
 
@@ -219,7 +305,7 @@
     box.innerHTML = m.tx.arch.map(a => {
       const techs = S.nodes.filter(n => n._arch === a.id);
       const p = benchmark ? m.maturityOf(techs) : m.progressOf(techs);
-      const color = `hsl(${a.hue},70%,58%)`;
+      const color = S.theme === 'B' ? `hsl(${a.hue},58%,40%)` : `hsl(${a.hue},70%,58%)`;
       const sub = benchmark
         ? `${techs.length} 项 · 平均成熟度`
         : `${p.stat?.built || 0}/${techs.length} 已建成`;
@@ -230,12 +316,17 @@
         <div class="pb-name" style="font-size:10.5px;opacity:.65">${sub}</div>
       </div>`;
     }).join('');
-    box.querySelectorAll('.pb-cell').forEach(c => c.onclick = () => {
-      const arch = c.dataset.arch;
-      const doms = m.tx.domains.filter(d => d.arch === arch);
-      const allOpen = doms.every(d => S.expanded.has(d.id));
-      doms.forEach(d => allOpen ? S.expanded.delete(d.id) : S.expanded.add(d.id));
-      rebuild();
+    /* 点击 = 只看这一条架构线，再点一次取消；支持多选叠加 */
+    box.querySelectorAll('.pb-cell').forEach(c => {
+      c.classList.toggle('dim', S.archFilter.size > 0 && !S.archFilter.has(c.dataset.arch));
+      c.title = (S.archFilter.has(c.dataset.arch) ? '取消只看' : '只看') +
+        c.querySelector('.pb-name').textContent + '（可多选）';
+      c.onclick = () => {
+        const a = c.dataset.arch;
+        S.archFilter.has(a) ? S.archFilter.delete(a) : S.archFilter.add(a);
+        if (S.archFilter.size === m.tx.arch.length) S.archFilter.clear();
+        rebuild(); fit();
+      };
     });
   }
 
@@ -269,10 +360,11 @@
   function paintLegend() {
     const m = M(), mode = S.colorMode, rows = [];
     let title = '', note = '';
+    const tone = c => TT.render.toneFor(c, S.theme);
     if (mode === 'status' && S.orgId !== 'benchmark') {
-      title = '建设状态';
+      title = '本单位建设状态';
       m.tx.status.forEach(s => rows.push([s.color, s.name]));
-      note = '虚线连线 = 前置尚未建成的依赖；<span style="color:#e05a5a">红色虚线</span> = 安全架构的合规闸门';
+      note = '虚线连线 = 前置尚未建成的依赖；实线 = 依赖已打通';
     } else if (mode === 'status' || mode === 'maturity') {
       title = '技术成熟度（行业整体）';
       m.tx.maturity.forEach(s => rows.push([s.color, s.name]));
@@ -292,8 +384,16 @@
       rows.push(['#f5c451', '领先'], ['#7f8ea3', '持平'], ['#f87171', '落后'], ['#3f4a5e', '未评估']);
       note = S.orgId === 'benchmark' ? '请先在左上角切换到一个具体单位' : '';
     }
-    $('#legend').innerHTML = `<div class="lg-title">${title}</div>` +
-      rows.map(([c, n]) => `<div class="lg-row"><span class="sw" style="background:${c}"></span>${n}</div>`).join('') +
+    if (S.legendOff) {
+      $('#legend').innerHTML = `<div class="lg-title" style="margin:0;cursor:pointer">图例 ▸</div>`;
+      $('#legend').onclick = () => { S.legendOff = false; paintLegend(); };
+      return;
+    }
+    $('#legend').onclick = e => {
+      if (e.target.classList.contains('lg-title')) { S.legendOff = true; paintLegend(); }
+    };
+    $('#legend').innerHTML = `<div class="lg-title" style="cursor:pointer">${title} ▾</div>` +
+      rows.map(([c, n]) => `<div class="lg-row"><span class="sw" style="background:${tone(c)}"></span>${n}</div>`).join('') +
       (note ? `<div class="lg-note">${note}</div>` : '');
   }
 
@@ -369,17 +469,40 @@
 
     svg.addEventListener('dblclick', e => {
       const g = e.target.closest('.node'); if (!g) return;
-      const id = g.dataset.id, kind = g.dataset.kind;
-      if (kind === 'tech') return;
-      S.expanded.has(id) ? S.expanded.delete(id) : S.expanded.add(id);
-      if (M().domById.has(id) && !S.expanded.has(id))
-        (M().tx.capabilities.filter(c => c.domain === id)).forEach(c => S.expanded.delete(c.id));
-      S.level = 'custom'; syncLevelBtns();
-      rebuild();
-      requestAnimationFrame(() => centerOn(id, true));
+      toggleUnit(g.dataset.id, g.dataset.kind);
     });
 
     window.addEventListener('resize', () => { applyTransform(); drawStars(); });
+  }
+
+  /* 展开 / 收拢同一个入口：
+   * 领域格 → 展开为能力格；能力格 → 展开为技术节点；
+   * 技术节点 → 收拢回它所属的能力格（再双击一次收回领域格）。 */
+  function toggleUnit(unitId, kind) {
+    const m = M();
+    const { base } = m.splitUnitId(unitId);
+    let focus = base;
+
+    if (kind === 'tech') {
+      const n = S.byId.get(base); if (!n) return;
+      if (S.expanded.has(n.cap)) { S.expanded.delete(n.cap); focus = n.cap; }
+      else { S.expanded.delete(n._domain); focus = n._domain; }
+    } else if (S.expanded.has(base)) {
+      S.expanded.delete(base);
+      if (m.domById.has(base))
+        m.tx.capabilities.filter(c => c.domain === base).forEach(c => S.expanded.delete(c.id));
+    } else {
+      S.expanded.add(base);
+    }
+
+    /* 双击前的那次单击会留下选中态，不清掉会让展开后整图被淡化 */
+    S.selected = null; S.hover = null; TT.ui.closeDrawer();
+    S.level = 'custom'; syncLevelBtns();
+    rebuild();
+
+    /* 焦点落到焦点主体在当前视图里的第一个格子上 */
+    const target = S.units.find(u => u.base === focus) || S.units.find(u => u.id.startsWith(focus));
+    if (target) requestAnimationFrame(() => centerOn(target.id, true));
   }
 
   function syncLevelBtns() {
@@ -424,7 +547,7 @@
     orgSel.onchange = () => {
       S.orgId = orgSel.value;
       S.selected = null; S.hover = null; TT.ui.closeDrawer();
-      if (S.orgId === 'benchmark' && S.colorMode === 'gap') { S.colorMode = 'status'; $('#colorSel').value = 'status'; }
+      syncColorOptions();
       rebuild();
     };
 
@@ -432,11 +555,23 @@
       m.tx.tags.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
     $('#tagSel').onchange = e => { S.tagFilter = e.target.value; rebuild(); fit(); };
 
-    $('#colorSel').onchange = e => {
-      S.colorMode = e.target.value;
-      if (S.colorMode === 'gap' && S.orgId === 'benchmark') TT.ui.toast('差距视图需要先选择一个具体单位');
-      rebuild();
-    };
+    $('#colorSel').onchange = e => { S.colorMode = e.target.value; rebuild(); };
+
+    /* 「本单位建设状态」和「与基准的差距」在基准视图下没有意义 ——
+     * 基准树描述的是行业整体成熟度，没有"建成/未建成"这回事。
+     * 所以在基准视图下禁用这两项，避免它们和「技术成熟度」显示出同样的颜色。 */
+    function syncColorOptions() {
+      const sel = $('#colorSel');
+      const benchmark = S.orgId === 'benchmark';
+      sel.querySelector('[value="status"]').disabled = benchmark;
+      sel.querySelector('[value="gap"]').disabled = benchmark;
+      sel.querySelector('[value="status"]').textContent = benchmark ? '本单位建设状态（需先选单位）' : '本单位建设状态';
+      sel.querySelector('[value="gap"]').textContent = benchmark ? '与行业基准的差距（需先选单位）' : '与行业基准的差距';
+      if (benchmark && (S.colorMode === 'status' || S.colorMode === 'gap')) S.colorMode = 'maturity';
+      else if (!benchmark && S.colorMode === 'maturity') S.colorMode = 'status';
+      sel.value = S.colorMode;
+    }
+    syncColorOptions();
 
     document.querySelectorAll('#levelSeg .btn').forEach(b => b.onclick = () => setLevel(b.dataset.level));
 
@@ -518,7 +653,7 @@
 
     bindToolbar();
     bindCanvas();
-    TT.ui.init(S, { rebuild, fit, centerOn, applyHighlight, setLevel, drawStars });
+    TT.ui.init(S, { rebuild, fit, centerOn, panToX, applyHighlight, setLevel, drawStars });
     syncLevelBtns();
     drawStars();
     rebuild();

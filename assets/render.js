@@ -38,12 +38,40 @@ TT.render = (function () {
 
   const hsl = (h, s, l, a) => `hsla(${h},${s}%,${l}%,${a})`;
 
+  /* 亮色主题下把调色板压暗、提饱和：同一套语义色，两种底色都能读 */
+  function toneFor(hex, theme) {
+    if (theme !== 'B' || typeof hex !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(hex)) return hex;
+    const n = parseInt(hex.slice(1), 16);
+    let r = (n >> 16) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), l0 = (mx + mn) / 2, d = mx - mn;
+    let h = 0, sat = 0;
+    if (d) {
+      sat = l0 > .5 ? d / (2 - mx - mn) : d / (mx + mn);
+      h = mx === r ? ((g - b) / d + (g < b ? 6 : 0)) : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+      h /= 6;
+    }
+    const L = Math.min(l0 * 0.66, 0.40);          /* 压暗 */
+    const S = Math.min(sat * 1.18 + .06, 0.88);   /* 提饱和 */
+    const q = L < .5 ? L * (1 + S) : L + S - L * S, pp = 2 * L - q;
+    const f = t => {
+      t = (t + 1) % 1;
+      return t < 1 / 6 ? pp + (q - pp) * 6 * t : t < 1 / 2 ? q
+           : t < 2 / 3 ? pp + (q - pp) * (2 / 3 - t) * 6 : pp;
+    };
+    const to = v => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, '0');
+    return '#' + to(f(h + 1 / 3)) + to(f(h)) + to(f(h - 1 / 3));
+  }
+
   /* ---------------- 着色：由当前着色维度决定 ---------------- */
   function colorOf(u, st) {
+    return toneFor(colorRaw(u, st), st.theme);
+  }
+
+  function colorRaw(u, st) {
     const m = TT.model, mode = st.colorMode;
     const techs = u.techs || [];
     if (mode === 'status') {
-      if (st.orgId === 'benchmark') return colorOf(u, { ...st, colorMode: 'maturity' });
+      if (st.orgId === 'benchmark') return colorRaw(u, { ...st, colorMode: 'maturity' });
       if (u.kind === 'tech') return m.statusById.get(u.ref._status || 'unknown')?.color || '#64748b';
       const p = m.progressOf(techs).pct;
       return p >= .85 ? '#4ade80' : p >= .5 ? '#a3e635' : p >= .25 ? '#fbbf24' : p > 0 ? '#60a5fa' : '#64748b';
@@ -96,37 +124,65 @@ TT.render = (function () {
       </marker>
     </defs>`);
 
-    /* --- 泳道背景 --- */
-    const bg = [];
-    L.lanes.forEach(l => {
-      bg.push(`<rect class="lane-bg ${l.band ? 'band' : ''}" x="0" y="${l.y}" width="${L.width}" height="${l.h}"/>`);
-      bg.push(`<line class="lane-line" x1="0" y1="${l.y}" x2="${L.width}" y2="${l.y}"/>`);
-      const cy = l.y + l.h / 2;
-      bg.push(`<g transform="translate(${L.LEFT_W / 2},${cy})"><text class="lane-label" transform="rotate(-90)">` +
-        `<tspan class="code">${l.code}</tspan> ${esc(l.name)}</text></g>`);
-    });
-    bg.push(`<line class="lane-line" x1="0" y1="${L.lanes.at(-1).y + L.lanes.at(-1).h}" x2="${L.width}" y2="${L.lanes.at(-1).y + L.lanes.at(-1).h}"/>`);
+    /* --- 背景：泳道走色相，时代走明度 + 彩虹色带 ---
+     * 两个维度刻意走不同的视觉通道，避免和节点的语义着色打架。
+     * 所有颜色用行内属性而非 class，保证导出 PNG 时不依赖外部 CSS。 */
+    const light = st.theme === 'B';
+    /* 五条泳道一视同仁：安全架构不再用更重的底色特殊突出，
+     * 它的横切性质由「贯穿」标签和位置表达，不靠颜色喊。 */
+    const laneTint = hue => light ? `hsla(${hue},60%,45%,.115)` : `hsla(${hue},70%,55%,.115)`;
+    const laneBar  = hue => light ? `hsl(${hue},58%,44%)` : `hsl(${hue},70%,60%)`;
+    /* 时代明度递进：暗色主题越往后越亮，亮色主题越往后越深 */
+    const eraTint = i => {
+      const t = tx.eras.length > 1 ? i / (tx.eras.length - 1) : 0;
+      return light ? `rgba(24,48,84,${(0.030 + t * 0.055).toFixed(3)})`
+                   : `rgba(198,222,255,${(0.026 + t * 0.050).toFixed(3)})`;
+    };
+    const eraBar = hue => light ? `hsl(${hue},55%,46%)` : `hsl(${hue},72%,64%)`;
 
-    /* --- 时代分栏 --- */
+    const bg = [];
+
+    /* 时代列：底色明度递进 + 顶部彩虹色带 + 罗马数字水印 */
+    const bodyTop = L.HEAD_H, bodyH = L.height - L.HEAD_H;
     L.cols.forEach((c, i) => {
-      if (i % 2) bg.push(`<rect class="era-band" x="${c.x}" y="${L.HEAD_H}" width="${c.w}" height="${L.height - L.HEAD_H}"/>`);
-      bg.push(`<line class="era-line" x1="${c.x}" y1="${L.HEAD_H}" x2="${c.x}" y2="${L.height}"/>`);
+      bg.push(`<rect x="${c.x}" y="${bodyTop}" width="${c.w}" height="${bodyH}" fill="${eraTint(c.era ? tx.eras.indexOf(c.era) : i)}"/>`);
+      const hue = c.era.hue ?? 210;
       const cx = c.x + c.w / 2;
-      bg.push(`<text class="era-roman" x="${cx}" y="24">${c.era.roman}</text>`);
-      bg.push(`<text class="era-title" x="${cx}" y="42">${esc(c.era.name)}</text>`);
-      bg.push(`<text class="era-period" x="${cx}" y="56">${esc(c.era.period)}</text>`);
+      bg.push(`<text x="${cx}" y="${L.height - 26}" text-anchor="middle" font-size="150" font-weight="700"
+        fill="${eraBar(hue)}" opacity="${light ? .035 : .04}" pointer-events="none">${c.era.roman}</text>`);
+      bg.push(`<rect x="${c.x + 8}" y="${bodyTop - 8}" width="${c.w - 16}" height="4" rx="2" fill="${eraBar(hue)}" opacity=".72"/>`);
+      bg.push(`<line x1="${c.x}" y1="${bodyTop - 8}" x2="${c.x}" y2="${L.height}" stroke="${eraBar(hue)}" stroke-opacity="${light ? .20 : .24}" stroke-width="1"/>`);
+
     });
+    bg.push(`<line x1="${L.width}" y1="${bodyTop - 8}" x2="${L.width}" y2="${L.height}" stroke="var(--grid)" stroke-width="1"/>`);
+
+    /* 泳道：色相底色 + 左侧彩色轨道条 + 带色标签 */
+    L.lanes.forEach(l => {
+      bg.push(`<rect x="0" y="${l.y}" width="${L.width}" height="${l.h}" fill="${laneTint(l.hue)}"/>`);
+      bg.push(`<line class="lane-line" x1="0" y1="${l.y}" x2="${L.width}" y2="${l.y}"/>`);
+      bg.push(`<rect x="0" y="${l.y + 3}" width="6" height="${l.h - 6}" rx="3" fill="${laneBar(l.hue)}" opacity=".9"/>`);
+    });
+    const last = L.lanes.at(-1);
+    bg.push(`<line class="lane-line" x1="0" y1="${last.y + last.h}" x2="${L.width}" y2="${last.y + last.h}"/>`);
+
     parts.push(`<g class="bg">${bg.join('')}</g>`);
 
     /* --- 跨 5A 宽卡片的背景带（如「人工智能与大模型」领域） --- */
     const spans = [];
+    const spanGroups = new Map();
     L.units.forEach(u => {
       if (u.kind === 'domain' && u.ref.spanArch?.length) {
-        const top = L.lanes[0].y, bot = L.lanes.at(-1).y + L.lanes.at(-1).h;
-        spans.push(`<rect class="spanband" x="${u.x - 16}" y="${top}" width="${u.w + 32}" height="${bot - top}" rx="10"/>`);
-        spans.push(`<rect class="spanband-edge" x="${u.x - 16}" y="${top}" width="${u.w + 32}" height="${bot - top}" rx="10"/>`);
-        spans.push(`<text class="spanband-tip" x="${u.x + u.w / 2}" y="${top + 16}" text-anchor="middle">横跨全部 5A 架构线</text>`);
+        const g = spanGroups.get(u.base) || { x0: Infinity, x1: -Infinity };
+        g.x0 = Math.min(g.x0, u.x); g.x1 = Math.max(g.x1, u.x + u.w);
+        spanGroups.set(u.base, g);
       }
+    });
+    spanGroups.forEach(g => {
+      const top = L.lanes[0].y, bot = L.lanes.at(-1).y + L.lanes.at(-1).h;
+      const x = g.x0 - 16, w = g.x1 - g.x0 + 32;
+      spans.push(`<rect class="spanband" x="${x}" y="${top}" width="${w}" height="${bot - top}" rx="10"/>`);
+      spans.push(`<rect class="spanband-edge" x="${x}" y="${top}" width="${w}" height="${bot - top}" rx="10"/>`);
+      spans.push(`<text class="spanband-tip" x="${x + w / 2}" y="${top + 16}" text-anchor="middle">横跨全部 5A 架构线</text>`);
     });
     if (spans.length) parts.push(`<g class="spans">${spans.join('')}</g>`);
 
@@ -138,7 +194,6 @@ TT.render = (function () {
       if (!a || !b) return;
       const w = Math.min(4.2, 1 + Math.log2(e.weight + 1) * 0.95);
       const cls = ['edge'];
-      if (e.gate) cls.push('gate');
       if (st.lockedEdges?.has(e.from + '>' + e.to)) cls.push('locked');
       edges.push(`<path class="${cls.join(' ')}" d="${TT.layout.edgePath(a, b)}" stroke-width="${w.toFixed(2)}"` +
         ` data-from="${esc(e.from)}" data-to="${esc(e.to)}"/>`);
@@ -159,7 +214,7 @@ TT.render = (function () {
         ` fill="${color}22" stroke="${color}" style="color:${color}"/>`);
 
       const padX = 12;
-      let ty = u.y + (isTech ? 21 : 24);
+      let ty = u.y + (isTech ? 21 : 22);
       const name = u.kind === 'tech' ? u.ref.name : u.ref.name;
       g.push(`<text class="title" x="${u.x + padX}" y="${ty}" font-size="${titleSize}">${esc(fit(name, u.w - padX * 2 - (isTech ? 16 : 34), titleSize))}</text>`);
 
@@ -182,7 +237,7 @@ TT.render = (function () {
       } else {
         /* 聚合节点：进度环 + 子节点统计 */
         const prog = st.orgId === 'benchmark' ? m.maturityOf(u.techs) : m.progressOf(u.techs);
-        const R = u.kind === 'domain' ? 17 : 13;
+        const R = u.kind === 'domain' ? 15 : 12;
         const cx = u.x + u.w - R - 13, cy2 = u.y + u.h / 2;
         const C = 2 * Math.PI * R;
         g.push(`<circle class="ring-bg" cx="${cx}" cy="${cy2}" r="${R}"/>`);
@@ -197,7 +252,7 @@ TT.render = (function () {
               const c = m.progressOf(u.techs).stat;
               return `${u.techs.length} 项 · 建成 ${c.built || 0} · 在建 ${c.building || 0} · 未启 ${(c.none || 0) + (c.unknown || 0)}`;
             })();
-        g.push(`<text class="meta" x="${u.x + padX}" y="${u.y + u.h - (u.kind === 'domain' ? 26 : 12)}">${esc(fit(s, u.w - padX - R * 2 - 22, 10))}</text>`);
+        g.push(`<text class="meta" x="${u.x + padX}" y="${u.y + u.h - (u.kind === 'domain' ? 22 : 11)}">${esc(fit(s, u.w - padX - R * 2 - 22, 10))}</text>`);
 
         if (u.kind === 'domain') {
           const awards = u.techs.reduce((a, t) => a + (t._awards?.length || 0), 0);
@@ -218,5 +273,5 @@ TT.render = (function () {
     svg.innerHTML = parts.join('');
   }
 
-  return { draw, colorOf, fit, esc, shapePath, textWidth };
+  return { draw, colorOf, toneFor, fit, esc, shapePath, textWidth };
 })();

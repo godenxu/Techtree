@@ -204,7 +204,7 @@ TT.nodes = [
     unlocks:['授信流程标准化','贷后监控'],
     stack:['信贷流程引擎','担保管理'] },
 
-  { id:'T2033', name:'财富管理与资管平台', en:'Wealth Management', cap:'C203', era:'E4', deps:['T2011','T7011'],
+  { id:'T2033', name:'财富管理与资管平台', en:'Wealth Management', cap:'C203', era:'E4', deps:['T2035','T7011'],
     maturity:'mainstream', adoption:'majority', confidence:'medium', autonomy:'partial', tags:[],
     effort:{manMonth:700,months:20}, value:4, risk:3,
     desc:'代销、资产配置、客户持仓与收益分析的财富业务中枢。',
@@ -523,7 +523,7 @@ TT.nodes = [
     stack:['OceanBase','TiDB','GoldenDB','TDSQL'],
     pitfall:'选型即长期绑定，需在真实账务负载下做充分验证' },
 
-  { id:'T6015', name:'大数据平台与数据湖', en:'Big Data Platform / Data Lake', cap:'C601', era:'E4', deps:['T6013','T9022'],
+  { id:'T6015', name:'大数据平台与数据湖', en:'Big Data Platform / Data Lake', cap:'C601', era:'E4', deps:['T6013','T9026'],
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'full', tags:[],
     effort:{manMonth:800,months:24}, value:5, risk:4,
     desc:'低成本存储半结构化与非结构化数据，承载明细级分析与机器学习训练。',
@@ -772,7 +772,7 @@ TT.nodes = [
     unlocks:['影像单据自动识别','数字人交互'],
     stack:['ASR/TTS','视觉模型','数字人驱动'] },
 
-  { id:'T8032', name:'智能客服与坐席助手', en:'AI Customer Service', cap:'C803', era:'E5', deps:['T8022','T1021'],
+  { id:'T8032', name:'智能客服与坐席助手', en:'AI Customer Service', cap:'C803', era:'E5', deps:['T8022','T1026'],
     maturity:'mainstream', adoption:'universal', confidence:'high', autonomy:'partial', tags:['ai'],
     effort:{manMonth:400,months:15}, value:4, risk:3,
     desc:'对客自助问答与坐席实时话术辅助、自动小结与质检。',
@@ -893,7 +893,7 @@ TT.nodes = [
 
   /* ═══════════════ D10 算力与自主可控 ═══════════════ */
 
-  { id:'T10011', name:'GPU 异构算力池与调度', en:'GPU Compute Pool', cap:'C1001', era:'E5', deps:['T9023','T9013'],
+  { id:'T10011', name:'GPU 异构算力池与调度', en:'GPU Compute Pool', cap:'C1001', era:'E5', deps:['T9023','T9026'],
     maturity:'mainstream', adoption:'majority', confidence:'high', autonomy:'dependent', tags:['ai','xinchuang'],
     effort:{manMonth:500,months:18}, value:5, risk:4,
     desc:'GPU 资源池化、多租户配额与训练推理混部调度，大模型的物理前提。',
@@ -985,7 +985,7 @@ TT.nodes = [
     unlocks:['终端合规准入','移动展业安全底座'],
     stack:['终端准入','EDR','安全沙箱'] },
 
-  { id:'T11012', name:'统一身份认证 IAM / 4A', en:'IAM', cap:'C1101', era:'E4', deps:['T11013','T11011'],
+  { id:'T11012', name:'统一身份认证 IAM / 4A', en:'IAM', cap:'C1101', era:'E4', deps:['T11013','T11016'],
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'full', tags:[],
     effort:{manMonth:400,months:18}, value:5, risk:4,
     desc:'账号、认证、授权、审计的统一管理，是开放银行与零信任的共同前置。',
@@ -1059,7 +1059,7 @@ TT.nodes = [
     unlocks:['镜像与供应链可信','运行时威胁检测'],
     stack:['镜像扫描','运行时防护','SBOM'] },
 
-  { id:'T11035', name:'抗量子密码 PQC 迁移', en:'Post-quantum Cryptography', cap:'C1103', era:'E6', deps:['T11013','T11033'],
+  { id:'T11035', name:'抗量子密码 PQC 迁移', en:'Post-quantum Cryptography', cap:'C1103', era:'E6', deps:['T11017','T11033'],
     maturity:'emerging', adoption:'pilot', confidence:'low', autonomy:'partial', tags:[],
     effort:{manMonth:400,months:30}, value:3, risk:5,
     desc:'应对未来量子计算破解风险的密码算法迁移与密码敏捷性建设。',
@@ -1135,7 +1135,7 @@ TT.nodes = [
     stack:['GBDT / 深度模型','模型监控'],
     pitfall:'监管要求模型可解释，纯黑箱模型在授信决策中难以过审' },
 
-  { id:'T12023', name:'智能反洗钱与可疑交易识别', en:'AI-powered AML', cap:'C1202', era:'E5', deps:['T12022','T8014','T12014'],
+  { id:'T12023', name:'智能反洗钱与可疑交易识别', en:'AI-powered AML', cap:'C1202', era:'E5', deps:['T12026','T8014','T12014'],
     maturity:'mainstream', adoption:'majority', confidence:'medium', autonomy:'full', tags:['risk','ai'],
     effort:{manMonth:400,months:18}, value:4, risk:4,
     desc:'用图分析与模型降低误报率，把反洗钱从规则筛查升级为智能识别。',
@@ -1170,5 +1170,58 @@ TT.nodes = [
     desc:'AI 应用的分级管理、责任认定、算法备案与全流程治理制度。',
     unlocks:['AI 规模化应用的制度前提','监管备案合规'],
     stack:['算法备案','AI 分级管理','伦理审查'] }
+,
+  /* ═══════════════ 补充：填平跨代断层的中间节点 ═══════════════
+   * 这 6 个节点是校验器报「跨代较远」时排查出来的真实缺失环节。
+   * 没有它们，科技树会出现「Ⅰ 时代直接跳到 Ⅴ 时代」的断层，
+   * 讲演进路径时说不通。 */
+
+  { id:'T2035', name:'理财与代销业务系统', en:'Wealth Product Distribution', cap:'C203', era:'E3', deps:['T2011'],
+    maturity:'mature', adoption:'universal', confidence:'high', autonomy:'partial', tags:[],
+    effort:{manMonth:400,months:18}, value:4, risk:3,
+    desc:'理财产品的发行、销售、份额登记与估值核算，是财富管理平台的业务底座。',
+    unlocks:['理财产品发行与销售','份额登记与估值'],
+    stack:['理财销售系统','份额登记'],
+    pitfall:'资管新规后净值化改造是重点，老的预期收益型逻辑要彻底重构' },
+
+  { id:'T1026', name:'在线客服与文本机器人', en:'Online Chatbot', cap:'C103', era:'E4', deps:['T1021','T1031'],
+    maturity:'mature', adoption:'universal', confidence:'high', autonomy:'full', tags:[],
+    effort:{manMonth:250,months:12}, value:3, risk:2,
+    desc:'基于意图识别与知识库的规则式在线客服，是大模型客服的前身与语料来源。',
+    unlocks:['在线文字咨询分流','会话日志沉淀'],
+    stack:['意图识别','FAQ 知识库','多轮对话'],
+    pitfall:'积累的历史会话是后续训练大模型客服最宝贵的语料，要提前规划留存与脱敏' },
+
+  { id:'T9026', name:'分布式存储（对象 / 块）', en:'Distributed Storage', cap:'C902', era:'E4', deps:['T9022'],
+    maturity:'mature', adoption:'universal', confidence:'high', autonomy:'full', tags:['xinchuang'],
+    effort:{manMonth:350,months:15}, value:5, risk:3,
+    desc:'软件定义的对象与块存储，摆脱集中式阵列，是数据湖与 AI 训练的存储底座。',
+    unlocks:['海量非结构化数据存储','存储弹性扩展','模型权重与检查点承载'],
+    stack:['Ceph','对象存储 S3 接口','分布式块存储'],
+    pitfall:'AI 训练对存储吞吐的要求远高于传统业务，选型时要按训练场景压测' },
+
+  { id:'T11016', name:'集中账号与授权管理', en:'Centralized Account Management', cap:'C1101', era:'E3', deps:['T11011'],
+    maturity:'mature', adoption:'universal', confidence:'high', autonomy:'partial', tags:[],
+    effort:{manMonth:280,months:14}, value:4, risk:3,
+    desc:'把散落在各系统的账号与权限收口到统一台账，是 IAM / 4A 的前置阶段。',
+    unlocks:['账号全生命周期管理','权限定期复核'],
+    stack:['账号台账','权限矩阵','离职账号回收'],
+    pitfall:'历史系统的账号清理是脏活也是硬骨头，往往是监管检查的高发问题项' },
+
+  { id:'T11017', name:'国密算法改造与密评', en:'SM Cryptography Migration', cap:'C1101', era:'E4', deps:['T11013'],
+    maturity:'mainstream', adoption:'majority', confidence:'high', autonomy:'full', tags:['xinchuang'],
+    effort:{manMonth:450,months:20}, value:5, risk:4,
+    desc:'把国际算法替换为 SM2/SM3/SM4 国密算法，并通过商用密码应用安全性评估。',
+    unlocks:['密码应用合规达标','密码体系自主可控','为 PQC 迁移打下密码敏捷基础'],
+    stack:['SM2 / SM3 / SM4','国密加密机','密评整改'],
+    pitfall:'涉及全行几乎所有系统的改造面，必须先做密码资产盘点再排期' },
+
+  { id:'T12026', name:'反洗钱模型化监测', en:'Model-based AML Monitoring', cap:'C1202', era:'E4', deps:['T12022','T12012'],
+    maturity:'mature', adoption:'majority', confidence:'high', autonomy:'full', tags:['risk'],
+    effort:{manMonth:350,months:15}, value:4, risk:3,
+    desc:'从固定规则筛查升级为客户风险分级 + 情景模型监测，降低海量误报。',
+    unlocks:['客户风险等级动态评定','可疑交易情景化识别'],
+    stack:['风险评级模型','监测情景库','案例管理'],
+    pitfall:'误报率高是行业通病，情景阈值需要基于本行数据反复回溯调优' }
 
 ];
