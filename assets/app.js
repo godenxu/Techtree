@@ -330,33 +330,53 @@
     });
 
     const m = M(), benchmark = S.orgId === 'benchmark';
-    laneBox.innerHTML = S.L.lanes.map(l => {
-      const y0 = l.y * k + S.view.y, y1 = (l.y + l.h) * k + S.view.y;
-      if (y1 < 0 || y0 > H) return '';
-      const span = Math.min(y1, H) - Math.max(y0, 0);
-      if (span < 64) return '';            /* 泳道露出太少就不贴标签，免得压到相邻泳道 */
-      const w = Math.max(64, Math.min(span - 14, 250));
-      /* 泳道只露出一小截时，标签贴着可见区居中，保证始终看得到完整的架构名 */
-      const lo = Math.max(y0, 0) + w / 2 + 6, hi = Math.min(y1, H) - w / 2 - 6;
-      const cy = lo > hi ? (Math.max(y0, 0) + Math.min(y1, H)) / 2
-                        : Math.min(Math.max((y0 + y1) / 2, lo), hi);
-      const col = S.theme === 'B' ? `hsl(${l.hue},58%,44%)` : `hsl(${l.hue},70%,60%)`;
-      const techs = S.nodes.filter(n => n._arch === l.id);
+    const archs = m.tx.arch;
+    const archFiltering = S.archFilter.size === 1;
+    const curArch = archFiltering ? archs.findIndex(a => S.archFilter.has(a.id)) : -1;
+
+    const laneChip = (a, top, width, cls, tip, dir) => {
+      const col = S.theme === 'B' ? `hsl(${a.hue},58%,44%)` : `hsl(${a.hue},70%,60%)`;
+      const techs = S.nodes.filter(n => n._arch === a.id);
       const p = benchmark ? m.maturityOf(techs) : m.progressOf(techs);
       const pct = Math.round(p.pct * 100);
-      const on = S.archFilter.has(l.id);
-      const off = S.archFilter.size && !on;
-      return `<div class="lane-chip ${off ? 'dim' : ''} ${on ? 'on' : ''}" data-arch="${l.id}"
-                   style="top:${cy}px;width:${w}px" title="${on ? '取消只看' : '只看'} ${l.code} ${l.name}">
-        <div class="lc-txt"><span class="cd" style="color:${col}">${l.code}</span> ${l.name}
+      return `<div class="lane-chip ${cls}" data-arch="${a.id}"
+                   style="top:${top}px;width:${width}px" title="${tip}">
+        <div class="lc-txt">${dir ? `<span class="dir">${dir}</span> ` : ''}<span class="cd" style="color:${col}">${a.code}</span> ${a.name}
           <b style="color:${col}">${pct}%</b></div>
         <div class="lc-bar"><i style="width:${pct}%;background:${col}"></i></div>
       </div>`;
-    }).join('');
+    };
+
+    if (archFiltering) {
+      /* 与时代条同一套逻辑：筛选后布局里只剩一条泳道，其余架构线没有泳道可依附，
+       * 所以整条改成垂直步进器，相邻的上下两条半透明可点。 */
+      const step = Math.min(168, (H - 90) / archs.length);
+      const y0 = H / 2 - (archs.length - 1) * step / 2;
+      laneBox.innerHTML = archs.map((a, i) => {
+        const d = i - curArch;
+        const cls = d === 0 ? 'on' : (Math.abs(d) === 1 ? 'adjacent' : 'dim');
+        const tip = d === 0 ? '取消只看 ' + a.name
+          : (Math.abs(d) === 1 ? (d < 0 ? '上一条：' : '下一条：') + a.name : '切换到 ' + a.name);
+        const dir = Math.abs(d) === 1 ? (d < 0 ? '▲' : '▼') : '';
+        return laneChip(a, y0 + i * step, Math.min(step - 14, 150), cls, tip, dir);
+      }).join('');
+    } else {
+      laneBox.innerHTML = S.L.lanes.map(l => {
+        const y0 = l.y * k + S.view.y, y1 = (l.y + l.h) * k + S.view.y;
+        if (y1 < 0 || y0 > H) return '';
+        const span = Math.min(y1, H) - Math.max(y0, 0);
+        if (span < 64) return '';
+        const w = Math.max(64, Math.min(span - 14, 250));
+        const lo = Math.max(y0, 0) + w / 2 + 6, hi = Math.min(y1, H) - w / 2 - 6;
+        const cy = lo > hi ? (Math.max(y0, 0) + Math.min(y1, H)) / 2
+                          : Math.min(Math.max((y0 + y1) / 2, lo), hi);
+        return laneChip(l, cy, w, '', '只看 ' + l.code + ' ' + l.name, '');
+      }).join('');
+    }
+
     laneBox.querySelectorAll('.lane-chip').forEach(c => c.onclick = () => {
       const a = c.dataset.arch;
-      S.archFilter.has(a) ? S.archFilter.delete(a) : S.archFilter.add(a);
-      if (S.archFilter.size === M().tx.arch.length) S.archFilter.clear();
+      S.archFilter = (S.archFilter.size === 1 && S.archFilter.has(a)) ? new Set() : new Set([a]);
       rebuild(); fit();
     });
   }

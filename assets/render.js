@@ -269,8 +269,7 @@ TT.render = (function () {
         g.push(`<circle class="ring-fg" cx="${cx}" cy="${cy2}" r="${R}" stroke="${color}"` +
           ` stroke-dasharray="${(C * ratio).toFixed(1)} ${C.toFixed(1)}"` +
           ` style="transform-origin:${cx}px ${cy2}px"/>`);
-        if (st.orgId !== 'benchmark')
-          g.push(`<text class="cnt" x="${cx}" y="${cy2 + 3.6}" text-anchor="middle" font-size="9.5">${Math.round(ratio * 100)}</text>`);
+        g.push(`<text class="cnt" x="${cx}" y="${cy2 + 3.6}" text-anchor="middle" font-size="9.5">${Math.round(ratio * 100)}</text>`);
 
         const bits = [];
         if (st.orgId === 'benchmark') {

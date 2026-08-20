@@ -501,3 +501,11 @@ body.presenting #presenter { display: block; }
 .era-chip.adjacent.next .nm::after  { content: ' ›'; opacity: .7; }
 .era-chip.on .rm { text-shadow: 0 0 12px currentColor; }
 .era-chip.dim { opacity: .22; }
+
+/* 架构条筛选后同样变成步进器，相邻的上下两条半透明可点 */
+.lane-chip.adjacent { opacity: .5; }
+.lane-chip.adjacent:hover { opacity: 1; }
+.lane-chip.dim { opacity: .22; }
+.lane-chip.on .lc-txt { text-shadow: 0 0 10px currentColor; }
+/* 箭头要反向转回来，否则会跟着竖排文字一起被旋转 */
+.lane-chip .dir { display: inline-block; transform: rotate(90deg); opacity: .75; }
