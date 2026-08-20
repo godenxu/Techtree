@@ -485,6 +485,40 @@ body.presenting #presenter { display: block; }
 .node .info-dot:hover { fill: currentColor; }
 .lane-chip { overflow: hidden; text-overflow: ellipsis; }
 
+/* 双向依赖：两个聚合格在同一时代互为前置。这是真实的业务事实，
+   显式画出来而不是藏起来；下钻到技术层它会自然消失（技术层是严格 DAG）。 */
+.edge.bidir {
+  stroke: var(--accent-2); stroke-width: 2; fill: none;
+  stroke-dasharray: none; opacity: .85;
+}
+.edge.bidir:hover { opacity: 1; filter: drop-shadow(0 0 5px var(--accent-2)); }
+
+/* 时代导航：贴在画布左右边缘，平时若隐若现，鼠标靠近才显形 */
+.era-nav {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  z-index: 13; width: 46px; padding: 14px 0;
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 10px; color: var(--text-dim); cursor: pointer;
+  opacity: .18; transition: opacity .22s, transform .22s, border-color .22s;
+  backdrop-filter: blur(8px); display: flex; flex-direction: column;
+  align-items: center; gap: 5px; line-height: 1.2;
+}
+.era-nav:hover { opacity: 1; border-color: var(--accent); color: var(--text); }
+.era-nav.hidden { display: none; }
+#eraPrev { left: 84px; }
+#eraNext { right: 56px; }
+#eraPrev:hover { transform: translateY(-50%) translateX(-3px); }
+#eraNext:hover { transform: translateY(-50%) translateX(3px); }
+.era-nav .arrow { font-size: 17px; line-height: 1; }
+.era-nav .rm { font-size: 14px; font-weight: 700; }
+.era-nav .nm {
+  font-size: 11px; writing-mode: vertical-rl; letter-spacing: 2px;
+  max-height: 108px; overflow: hidden;
+}
+/* 多点环路里被迫回折的那一条 */
+.edge.cyc { stroke: #f0a05a; stroke-width: 1.8; fill: none; opacity: .8; stroke-dasharray: 7 4; }
+.edge.cyc:hover { opacity: 1; }
+
 </style>
 </head>
 <body>
@@ -538,6 +572,7 @@ body.presenting #presenter { display: block; }
       <button class="btn" id="btnPresent" title="按时代逐幕点亮，用于汇报讲演进">演示</button>
       <button class="btn" id="btnExport">导出 ▾</button>
       <button class="btn" id="btnMaintain" title="在页面里直接编辑节点，改完导出数据文件">维护</button>
+      <button class="btn" id="btnCompact" title="紧凑模式：压缩子列把图收进一屏，代价是同代依赖会画成竖线">紧凑</button>
       <button class="btn" id="btnTheme" title="深空科技风 / 银行专业风">主题 A</button>
       <button class="btn" id="btnHelp">?</button>
       <span id="validBadge"></span>
@@ -557,10 +592,14 @@ body.presenting #presenter { display: block; }
 
     <div id="legend"></div>
 
+    <!-- 时代导航：左右边缘若隐若现，点一下直接去上/下一个时代 -->
+    <button class="era-nav" id="eraPrev" title="上一个时代"></button>
+    <button class="era-nav" id="eraNext" title="下一个时代"></button>
+
     <div id="zoomctl">
       <button class="btn" id="zIn" title="放大">＋</button>
       <button class="btn" id="zOut" title="缩小">－</button>
-      <button class="btn" id="zFit" title="适应窗口">⤢</button>
+      <button class="btn" id="zFit" title="在「全览」与「可读」之间切换">⤢</button>
     </div>
 
     <div id="hint">滚轮缩放 · 拖拽平移 · 悬停看依赖链 · <b>单击聚合格下钻</b> · <b>单击右上角 ⓘ 看详情</b> · 单击技术节点看详情 · <b>双击收拢一级</b> · Esc 逐级收起</div>
@@ -2833,9 +2872,10 @@ TT.layout = (function () {
   const LANE_PAD = 28, ROW_GAP = 14;
   const HEAD_H = 66, LEFT_W = 74;
   const TARGET_ROWS = 10;  /* 单格超过这么多节点才再细分子列 */
-  /* 同代依赖深度上限。技术层放宽以换取几乎全部左→右的流向；
-   * 聚合层收紧，因为领域视图要「一屏讲给领导」，宽度比流向更重要。 */
-  const MAX_DEPTH_TECH = 5, MAX_DEPTH_AGG = 1;
+  /* 同代依赖深度不设业务上限 —— 有先后关系的节点绝不能画成垂直线，
+   * 画布该多宽就多宽。20 只是防御异常数据的死循环保险丝。
+   * 「紧凑模式」下才收紧到 1，用于必须一屏投影的场合。 */
+  const MAX_DEPTH_FULL = 20, MAX_DEPTH_COMPACT = 1;
 
   /* 同一时代列内部的依赖深度 —— 让「手机银行 → 智能柜台」这类同代依赖
    * 也能左→右流动，而不是画成难看的回环。
@@ -2882,7 +2922,8 @@ TT.layout = (function () {
     return depth;
   }
 
-  function compute(units, nodes, h, edges) {
+  function compute(units, nodes, h, edges, opts) {
+    opts = opts || {};
     const m = M(), tx = m.tx;
 
     /* --- 归位：每个单元的时代列与泳道 --- */
@@ -2910,9 +2951,7 @@ TT.layout = (function () {
     const eraList = tx.eras.filter((_, ci) => used[ci]);
 
     /* --- 同代依赖深度 → 子列序号 --- */
-    const techRatio = placed.filter(p => p.kind === 'tech').length / Math.max(1, placed.length);
-    const maxDepth = techRatio > .6 ? MAX_DEPTH_TECH : MAX_DEPTH_AGG;
-    const depth = localDepth(placed, edges, maxDepth);
+    const depth = localDepth(placed, edges, opts.compact ? MAX_DEPTH_COMPACT : MAX_DEPTH_FULL);
     placed.forEach(p => { p.depth = depth.get(p.id) || 0; });
 
     /* --- 子列规划：先按依赖深度分级，再按拥挤度在级内细分 --- */
@@ -3133,6 +3172,19 @@ TT.render = (function () {
     return '#64748b';
   }
 
+  /* 双向依赖的弧线：从两个节点的同侧引出并向外凸，两端都带箭头，
+   * 一眼能和普通的单向依赖区分开。 */
+  function bidirPath(a, b) {
+    const sameCol = Math.abs(a.cx - b.cx) < 12;
+    if (sameCol) {
+      const x = a.x + a.w, bow = 54 + Math.abs(a.cy - b.cy) * 0.16;
+      return `M${x + 4},${a.cy} C${x + bow},${a.cy} ${x + bow},${b.cy} ${x + 4},${b.cy}`;
+    }
+    /* 起点永远是 a、终点永远是 b，箭头方向才不会画反 */
+    const up = Math.min(a.cy, b.cy) - 46;
+    return `M${a.cx},${a.y} Q${(a.cx + b.cx) / 2},${up} ${b.cx},${b.y}`;
+  }
+
   /* ---------------- 主绘制 ---------------- */
   function draw(svg, L, st) {
     const m = TT.model, tx = m.tx;
@@ -3144,6 +3196,9 @@ TT.render = (function () {
     parts.push(`<defs>
       <marker id="arw" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
         <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
+      </marker>
+      <marker id="arw-a" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+        <path d="M0,0.5 L9,4.5 L0,8.5 z" fill="context-stroke"/>
       </marker>
       <pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
         <line x1="0" y1="0" x2="0" y2="7" stroke="${hatchCol}" stroke-width="2.2"/>
@@ -3220,6 +3275,20 @@ TT.render = (function () {
       const a = pos.get(e.from), b = pos.get(e.to);
       if (!a || !b) return;
       const w = Math.min(4.2, 1 + Math.log2(e.weight + 1) * 0.95);
+      if (e.bidir) {
+        if (!e.primary) return;                       /* 一对只画一条 */
+        edges.push(`<path class="edge bidir" d="${bidirPath(a, b)}" stroke-width="${Math.max(1.8, w).toFixed(2)}"` +
+          ` marker-start="url(#arw-a)" marker-end="url(#arw-a)"` +
+          ` data-from="${esc(e.from)}" data-to="${esc(e.to)}" data-bidir="1"><title>` +
+          `双向依赖：两者在本时代互为前置，下钻到技术层可见具体是哪几条</title></path>`);
+        return;
+      }
+      if (e.reverse) {
+        edges.push(`<path class="edge cyc" d="${bidirPath(a, b)}" stroke-width="${Math.max(1.8, w).toFixed(2)}"` +
+          ` marker-end="url(#arw-a)" data-from="${esc(e.from)}" data-to="${esc(e.to)}"><title>` +
+          `环路依赖：本时代内存在多个领域互相牵制的环，这一条只能画成回折；下钻到技术层即消失</title></path>`);
+        return;
+      }
       const cls = ['edge'];
       if (st.lockedEdges?.has(e.from + '>' + e.to)) cls.push('locked');
       edges.push(`<path class="${cls.join(' ')}" d="${TT.layout.edgePath(a, b)}" stroke-width="${w.toFixed(2)}"` +
@@ -4154,6 +4223,7 @@ ${body}
     archFilter: new Set(),
     eraFilter: new Set(),
     legendOff: false,
+    compact: false,
     search: '',
     selected: null,
     hover: null,
@@ -4269,6 +4339,16 @@ ${body}
       emap.set(key, e);
     });
     S.edges = [...emap.values()];
+    /* 聚合层会出现「两个领域在同一时代互为前置」的双向依赖 ——
+     * 这是真实业务事实（微服务 ⇄ DevOps、数据平台 ⇄ 云平台），
+     * 无论怎么排都有一条方向是反的，所以显式标出来而不是藏起来。 */
+    const has = new Set(S.edges.map(e => e.from + '>' + e.to));
+    S.edges.forEach(e => {
+      if (has.has(e.to + '>' + e.from)) {
+        e.bidir = true;
+        e.primary = e.from < e.to;      /* 一对里只画一条，另一条跳过 */
+      }
+    });
 
     /* 未打通的依赖（前置未建成）画成暗色虚线 */
     S.lockedEdges = new Set();
@@ -4282,8 +4362,18 @@ ${body}
     /* 聚合格的标题用里程碑名，先算好挂到单元上 */
     units.forEach(u => { if (u.kind !== 'tech') u._milestone = m.milestoneOf(u.id, S.nodes, S.h); });
 
-    S.L = TT.layout.compute(units, S.nodes, S.h, S.edges);
+    S.L = TT.layout.compute(units, S.nodes, S.h, S.edges, { compact: S.compact });
     S.units = S.L.units;
+
+    /* 排完位再回头看：还有哪些边被画成了反向。
+     * 双向对已经单独标过；剩下的是多点环路里被迫牺牲的那一条（领域层通常 1 条）。
+     * 一律改画成弧线并保留箭头方向，不让它伪装成一条普通的依赖线。 */
+    const posMap = new Map(S.units.map(u => [u.id, u]));
+    S.edges.forEach(e => {
+      if (e.bidir) return;
+      const a = posMap.get(e.from), b = posMap.get(e.to);
+      e.reverse = !!(a && b && b.x <= a.x + a.w - 1);
+    });
 
     /* 渲染前先把即将消失的格子克隆成幽灵，渲染后让它们收回父格 */
     const prev = S.prevPos || new Map();
@@ -4467,17 +4557,33 @@ ${body}
     }
     g.setAttribute('transform', `translate(${S.view.x},${S.view.y}) scale(${S.view.k})`);
     paintSticky();
+    paintEraNav();
   }
-  function fit() {
+  /* 放开子列上限之后画布可能很宽（领域层约 5000px）。
+   * 硬要一屏塞下就会把卡片缩到看不清字，所以分两种取景：
+   *   overview 全览 —— 整张图塞进窗口，用于看全貌
+   *   read     可读 —— 纵向适应、左对齐，卡片保持能读，靠时代导航往右走
+   * 打开时按画布宽度自动选，⤢ 按钮在两者之间切换。 */
+  const READABLE_K = 0.45;
+  function fit(mode) {
     const st = $('#stage');
-    /* 给冻结表头、图例、演示面板预留空间，避免内容被浮层压住 */
     const padT = 66, padL = 66, padR = 24;
     const padB = S.presenting ? 210 : (S.legendOff ? 40 : 78);
     const w = st.clientWidth - padL - padR, h = st.clientHeight - padT - padB;
-    const k = Math.min(w / S.L.width, h / S.L.height, 1.6);
-    S.view.k = k;
-    S.view.x = padL + (w - S.L.width * k) / 2;
-    S.view.y = padT + (h - S.L.height * k) / 2;
+    const kw = w / S.L.width, kh = h / S.L.height;
+
+    if (!mode) mode = (Math.min(kw, kh) < READABLE_K && !S.presenting) ? 'read' : 'overview';
+    S.fitMode = mode;
+
+    if (mode === 'read') {
+      S.view.k = Math.min(kh, 1.0);
+      S.view.x = padL;                       /* 从第 Ⅰ 时代开始看 */
+      S.view.y = padT + (h - S.L.height * S.view.k) / 2;
+    } else {
+      S.view.k = Math.min(kw, kh, 1.6);
+      S.view.x = padL + (w - S.L.width * S.view.k) / 2;
+      S.view.y = padT + (h - S.L.height * S.view.k) / 2;
+    }
     applyTransform();
   }
   function centerOn(id, zoom) {
@@ -4532,6 +4638,54 @@ ${body}
     });
   }
 
+  /* ---------------- 时代导航 ----------------
+   * 单时代筛选下点它 = 直接换到相邻时代（不用先取消筛选再选）；
+   * 没有筛选时点它 = 把镜头平移到相邻时代那一列。 */
+  function currentEraIdx() {
+    if (!S.L) return 0;
+    if (S.eraFilter.size === 1) {
+      const only = [...S.eraFilter][0];
+      return M().tx.eras.findIndex(e => e.id === only);
+    }
+    /* 取视口中心最接近的那一列 */
+    const st = $('#stage');
+    const centerWorld = (st.clientWidth / 2 - S.view.x) / S.view.k;
+    let best = 0, bd = Infinity;
+    S.L.cols.forEach(c => {
+      const d = Math.abs(c.x + c.w / 2 - centerWorld);
+      if (d < bd) { bd = d; best = M().tx.eras.indexOf(c.era); }
+    });
+    return best;
+  }
+
+  function paintEraNav() {
+    const eras = M().tx.eras, i = currentEraIdx();
+    const filtering = S.eraFilter.size === 1;
+    [['#eraPrev', -1, '‹'], ['#eraNext', 1, '›']].forEach(([sel, dir, arrow]) => {
+      const btn = $(sel);
+      /* 筛选态下只在已有节点的时代之间跳；非筛选态按实际画出来的列跳 */
+      const pool = filtering ? eras.map((e, k) => k) : S.L.cols.map(c => eras.indexOf(c.era));
+      const cand = dir < 0 ? pool.filter(k => k < i).pop() : pool.filter(k => k > i).shift();
+      if (cand === undefined) { btn.classList.add('hidden'); return; }
+      const e = eras[cand];
+      const hue = e.hue ?? 210;
+      const col = S.theme === 'B' ? `hsl(${hue},55%,42%)` : `hsl(${hue},72%,64%)`;
+      btn.classList.remove('hidden');
+      btn.innerHTML = `<span class="arrow" style="color:${col}">${arrow}</span>
+        <span class="rm" style="color:${col}">${e.roman}</span>
+        <span class="nm">${e.name}</span>`;
+      btn.title = (filtering ? '切换到 ' : '滚动到 ') + e.roman + ' ' + e.name;
+      btn.onclick = () => {
+        if (filtering) { S.eraFilter = new Set([e.id]); rebuild(); fit(); }
+        else {
+          const c = S.L.cols.find(x => x.era.id === e.id);
+          if (c) panToX(c.x + c.w / 2);
+          paintEraNav();
+        }
+      };
+    });
+  }
+
   /* ---------------- 面包屑 ---------------- */
   function paintBreadcrumb() {
     const m = M(), open = [...S.expanded];
@@ -4566,7 +4720,9 @@ ${body}
     if (mode === 'status' && S.orgId !== 'benchmark') {
       title = '本单位建设状态';
       m.tx.status.forEach(s => rows.push([s.color, s.name]));
-      note = '虚线连线 = 前置尚未建成的依赖；实线 = 依赖已打通';
+      note = '虚线连线 = 前置尚未建成的依赖；实线 = 依赖已打通；' +
+        '<span style="color:var(--accent-2)">紫色双箭头弧线</span> = 双向依赖（互为前置）；' +
+        '<span style="color:#f0a05a">橙色虚弧线</span> = 环路中被迫回折的边，下钻到技术层即消失';
     } else if (mode === 'status' || mode === 'maturity') {
       title = '技术成熟度（行业整体）';
       m.tx.maturity.forEach(s => rows.push([s.color, s.name]));
@@ -4812,6 +4968,15 @@ ${body}
       TT.ui.openDrawer(hit.id);
     };
 
+    const cbtn = $('#btnCompact');
+    cbtn.classList.toggle('on', S.compact);
+    cbtn.onclick = () => {
+      S.compact = !S.compact;
+      cbtn.classList.toggle('on', S.compact);
+      localStorage.setItem('tt-compact', S.compact ? '1' : '');
+      TT.ui.toast(S.compact ? '紧凑模式：图收进一屏，同代依赖会画成竖线' : '已关闭紧凑模式：有先后关系的节点一律左→右排开');
+      rebuild(); fit();
+    };
     $('#btnTheme').onclick = () => {
       S.theme = S.theme === 'A' ? 'B' : 'A';
       document.documentElement.dataset.theme = S.theme;
@@ -4837,7 +5002,10 @@ ${body}
     $('#btnPresent').onclick = () => TT.ui.startPresent();
     $('#zIn').onclick = () => { S.view.k = Math.min(3.2, S.view.k * 1.25); applyTransform(); };
     $('#zOut').onclick = () => { S.view.k = Math.max(.14, S.view.k / 1.25); applyTransform(); };
-    $('#zFit').onclick = fit;
+    $('#zFit').onclick = () => {
+      fit(S.fitMode === 'overview' ? 'read' : 'overview');
+      TT.ui.toast(S.fitMode === 'overview' ? '全览：整张图塞进窗口' : '可读：卡片保持能读，用左右的时代按钮往前走');
+    };
     $('#dwClose').onclick = () => { TT.ui.closeDrawer(); S.selected = null; applyHighlight(); };
 
     document.addEventListener('keydown', e => {
@@ -4860,6 +5028,7 @@ ${body}
   /* ---------------- 启动 ---------------- */
   function init() {
     S.theme = localStorage.getItem('tt-theme') || 'A';
+    S.compact = !!localStorage.getItem('tt-compact');
     document.documentElement.dataset.theme = S.theme;
     $('#btnTheme').textContent = '主题 ' + S.theme;
 

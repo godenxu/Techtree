@@ -117,6 +117,19 @@ TT.render = (function () {
     return '#64748b';
   }
 
+  /* 双向依赖的弧线：从两个节点的同侧引出并向外凸，两端都带箭头，
+   * 一眼能和普通的单向依赖区分开。 */
+  function bidirPath(a, b) {
+    const sameCol = Math.abs(a.cx - b.cx) < 12;
+    if (sameCol) {
+      const x = a.x + a.w, bow = 54 + Math.abs(a.cy - b.cy) * 0.16;
+      return `M${x + 4},${a.cy} C${x + bow},${a.cy} ${x + bow},${b.cy} ${x + 4},${b.cy}`;
+    }
+    /* 起点永远是 a、终点永远是 b，箭头方向才不会画反 */
+    const up = Math.min(a.cy, b.cy) - 46;
+    return `M${a.cx},${a.y} Q${(a.cx + b.cx) / 2},${up} ${b.cx},${b.y}`;
+  }
+
   /* ---------------- 主绘制 ---------------- */
   function draw(svg, L, st) {
     const m = TT.model, tx = m.tx;
@@ -128,6 +141,9 @@ TT.render = (function () {
     parts.push(`<defs>
       <marker id="arw" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
         <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
+      </marker>
+      <marker id="arw-a" viewBox="0 0 9 9" refX="8" refY="4.5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
+        <path d="M0,0.5 L9,4.5 L0,8.5 z" fill="context-stroke"/>
       </marker>
       <pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
         <line x1="0" y1="0" x2="0" y2="7" stroke="${hatchCol}" stroke-width="2.2"/>
@@ -204,6 +220,20 @@ TT.render = (function () {
       const a = pos.get(e.from), b = pos.get(e.to);
       if (!a || !b) return;
       const w = Math.min(4.2, 1 + Math.log2(e.weight + 1) * 0.95);
+      if (e.bidir) {
+        if (!e.primary) return;                       /* 一对只画一条 */
+        edges.push(`<path class="edge bidir" d="${bidirPath(a, b)}" stroke-width="${Math.max(1.8, w).toFixed(2)}"` +
+          ` marker-start="url(#arw-a)" marker-end="url(#arw-a)"` +
+          ` data-from="${esc(e.from)}" data-to="${esc(e.to)}" data-bidir="1"><title>` +
+          `双向依赖：两者在本时代互为前置，下钻到技术层可见具体是哪几条</title></path>`);
+        return;
+      }
+      if (e.reverse) {
+        edges.push(`<path class="edge cyc" d="${bidirPath(a, b)}" stroke-width="${Math.max(1.8, w).toFixed(2)}"` +
+          ` marker-end="url(#arw-a)" data-from="${esc(e.from)}" data-to="${esc(e.to)}"><title>` +
+          `环路依赖：本时代内存在多个领域互相牵制的环，这一条只能画成回折；下钻到技术层即消失</title></path>`);
+        return;
+      }
       const cls = ['edge'];
       if (st.lockedEdges?.has(e.from + '>' + e.to)) cls.push('locked');
       edges.push(`<path class="${cls.join(' ')}" d="${TT.layout.edgePath(a, b)}" stroke-width="${w.toFixed(2)}"` +

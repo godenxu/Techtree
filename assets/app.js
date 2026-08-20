@@ -17,6 +17,7 @@
     archFilter: new Set(),
     eraFilter: new Set(),
     legendOff: false,
+    compact: false,
     search: '',
     selected: null,
     hover: null,
@@ -132,6 +133,16 @@
       emap.set(key, e);
     });
     S.edges = [...emap.values()];
+    /* 聚合层会出现「两个领域在同一时代互为前置」的双向依赖 ——
+     * 这是真实业务事实（微服务 ⇄ DevOps、数据平台 ⇄ 云平台），
+     * 无论怎么排都有一条方向是反的，所以显式标出来而不是藏起来。 */
+    const has = new Set(S.edges.map(e => e.from + '>' + e.to));
+    S.edges.forEach(e => {
+      if (has.has(e.to + '>' + e.from)) {
+        e.bidir = true;
+        e.primary = e.from < e.to;      /* 一对里只画一条，另一条跳过 */
+      }
+    });
 
     /* 未打通的依赖（前置未建成）画成暗色虚线 */
     S.lockedEdges = new Set();
@@ -145,8 +156,18 @@
     /* 聚合格的标题用里程碑名，先算好挂到单元上 */
     units.forEach(u => { if (u.kind !== 'tech') u._milestone = m.milestoneOf(u.id, S.nodes, S.h); });
 
-    S.L = TT.layout.compute(units, S.nodes, S.h, S.edges);
+    S.L = TT.layout.compute(units, S.nodes, S.h, S.edges, { compact: S.compact });
     S.units = S.L.units;
+
+    /* 排完位再回头看：还有哪些边被画成了反向。
+     * 双向对已经单独标过；剩下的是多点环路里被迫牺牲的那一条（领域层通常 1 条）。
+     * 一律改画成弧线并保留箭头方向，不让它伪装成一条普通的依赖线。 */
+    const posMap = new Map(S.units.map(u => [u.id, u]));
+    S.edges.forEach(e => {
+      if (e.bidir) return;
+      const a = posMap.get(e.from), b = posMap.get(e.to);
+      e.reverse = !!(a && b && b.x <= a.x + a.w - 1);
+    });
 
     /* 渲染前先把即将消失的格子克隆成幽灵，渲染后让它们收回父格 */
     const prev = S.prevPos || new Map();
@@ -330,17 +351,33 @@
     }
     g.setAttribute('transform', `translate(${S.view.x},${S.view.y}) scale(${S.view.k})`);
     paintSticky();
+    paintEraNav();
   }
-  function fit() {
+  /* 放开子列上限之后画布可能很宽（领域层约 5000px）。
+   * 硬要一屏塞下就会把卡片缩到看不清字，所以分两种取景：
+   *   overview 全览 —— 整张图塞进窗口，用于看全貌
+   *   read     可读 —— 纵向适应、左对齐，卡片保持能读，靠时代导航往右走
+   * 打开时按画布宽度自动选，⤢ 按钮在两者之间切换。 */
+  const READABLE_K = 0.45;
+  function fit(mode) {
     const st = $('#stage');
-    /* 给冻结表头、图例、演示面板预留空间，避免内容被浮层压住 */
     const padT = 66, padL = 66, padR = 24;
     const padB = S.presenting ? 210 : (S.legendOff ? 40 : 78);
     const w = st.clientWidth - padL - padR, h = st.clientHeight - padT - padB;
-    const k = Math.min(w / S.L.width, h / S.L.height, 1.6);
-    S.view.k = k;
-    S.view.x = padL + (w - S.L.width * k) / 2;
-    S.view.y = padT + (h - S.L.height * k) / 2;
+    const kw = w / S.L.width, kh = h / S.L.height;
+
+    if (!mode) mode = (Math.min(kw, kh) < READABLE_K && !S.presenting) ? 'read' : 'overview';
+    S.fitMode = mode;
+
+    if (mode === 'read') {
+      S.view.k = Math.min(kh, 1.0);
+      S.view.x = padL;                       /* 从第 Ⅰ 时代开始看 */
+      S.view.y = padT + (h - S.L.height * S.view.k) / 2;
+    } else {
+      S.view.k = Math.min(kw, kh, 1.6);
+      S.view.x = padL + (w - S.L.width * S.view.k) / 2;
+      S.view.y = padT + (h - S.L.height * S.view.k) / 2;
+    }
     applyTransform();
   }
   function centerOn(id, zoom) {
@@ -395,6 +432,54 @@
     });
   }
 
+  /* ---------------- 时代导航 ----------------
+   * 单时代筛选下点它 = 直接换到相邻时代（不用先取消筛选再选）；
+   * 没有筛选时点它 = 把镜头平移到相邻时代那一列。 */
+  function currentEraIdx() {
+    if (!S.L) return 0;
+    if (S.eraFilter.size === 1) {
+      const only = [...S.eraFilter][0];
+      return M().tx.eras.findIndex(e => e.id === only);
+    }
+    /* 取视口中心最接近的那一列 */
+    const st = $('#stage');
+    const centerWorld = (st.clientWidth / 2 - S.view.x) / S.view.k;
+    let best = 0, bd = Infinity;
+    S.L.cols.forEach(c => {
+      const d = Math.abs(c.x + c.w / 2 - centerWorld);
+      if (d < bd) { bd = d; best = M().tx.eras.indexOf(c.era); }
+    });
+    return best;
+  }
+
+  function paintEraNav() {
+    const eras = M().tx.eras, i = currentEraIdx();
+    const filtering = S.eraFilter.size === 1;
+    [['#eraPrev', -1, '‹'], ['#eraNext', 1, '›']].forEach(([sel, dir, arrow]) => {
+      const btn = $(sel);
+      /* 筛选态下只在已有节点的时代之间跳；非筛选态按实际画出来的列跳 */
+      const pool = filtering ? eras.map((e, k) => k) : S.L.cols.map(c => eras.indexOf(c.era));
+      const cand = dir < 0 ? pool.filter(k => k < i).pop() : pool.filter(k => k > i).shift();
+      if (cand === undefined) { btn.classList.add('hidden'); return; }
+      const e = eras[cand];
+      const hue = e.hue ?? 210;
+      const col = S.theme === 'B' ? `hsl(${hue},55%,42%)` : `hsl(${hue},72%,64%)`;
+      btn.classList.remove('hidden');
+      btn.innerHTML = `<span class="arrow" style="color:${col}">${arrow}</span>
+        <span class="rm" style="color:${col}">${e.roman}</span>
+        <span class="nm">${e.name}</span>`;
+      btn.title = (filtering ? '切换到 ' : '滚动到 ') + e.roman + ' ' + e.name;
+      btn.onclick = () => {
+        if (filtering) { S.eraFilter = new Set([e.id]); rebuild(); fit(); }
+        else {
+          const c = S.L.cols.find(x => x.era.id === e.id);
+          if (c) panToX(c.x + c.w / 2);
+          paintEraNav();
+        }
+      };
+    });
+  }
+
   /* ---------------- 面包屑 ---------------- */
   function paintBreadcrumb() {
     const m = M(), open = [...S.expanded];
@@ -429,7 +514,9 @@
     if (mode === 'status' && S.orgId !== 'benchmark') {
       title = '本单位建设状态';
       m.tx.status.forEach(s => rows.push([s.color, s.name]));
-      note = '虚线连线 = 前置尚未建成的依赖；实线 = 依赖已打通';
+      note = '虚线连线 = 前置尚未建成的依赖；实线 = 依赖已打通；' +
+        '<span style="color:var(--accent-2)">紫色双箭头弧线</span> = 双向依赖（互为前置）；' +
+        '<span style="color:#f0a05a">橙色虚弧线</span> = 环路中被迫回折的边，下钻到技术层即消失';
     } else if (mode === 'status' || mode === 'maturity') {
       title = '技术成熟度（行业整体）';
       m.tx.maturity.forEach(s => rows.push([s.color, s.name]));
@@ -675,6 +762,15 @@
       TT.ui.openDrawer(hit.id);
     };
 
+    const cbtn = $('#btnCompact');
+    cbtn.classList.toggle('on', S.compact);
+    cbtn.onclick = () => {
+      S.compact = !S.compact;
+      cbtn.classList.toggle('on', S.compact);
+      localStorage.setItem('tt-compact', S.compact ? '1' : '');
+      TT.ui.toast(S.compact ? '紧凑模式：图收进一屏，同代依赖会画成竖线' : '已关闭紧凑模式：有先后关系的节点一律左→右排开');
+      rebuild(); fit();
+    };
     $('#btnTheme').onclick = () => {
       S.theme = S.theme === 'A' ? 'B' : 'A';
       document.documentElement.dataset.theme = S.theme;
@@ -700,7 +796,10 @@
     $('#btnPresent').onclick = () => TT.ui.startPresent();
     $('#zIn').onclick = () => { S.view.k = Math.min(3.2, S.view.k * 1.25); applyTransform(); };
     $('#zOut').onclick = () => { S.view.k = Math.max(.14, S.view.k / 1.25); applyTransform(); };
-    $('#zFit').onclick = fit;
+    $('#zFit').onclick = () => {
+      fit(S.fitMode === 'overview' ? 'read' : 'overview');
+      TT.ui.toast(S.fitMode === 'overview' ? '全览：整张图塞进窗口' : '可读：卡片保持能读，用左右的时代按钮往前走');
+    };
     $('#dwClose').onclick = () => { TT.ui.closeDrawer(); S.selected = null; applyHighlight(); };
 
     document.addEventListener('keydown', e => {
@@ -723,6 +822,7 @@
   /* ---------------- 启动 ---------------- */
   function init() {
     S.theme = localStorage.getItem('tt-theme') || 'A';
+    S.compact = !!localStorage.getItem('tt-compact');
     document.documentElement.dataset.theme = S.theme;
     $('#btnTheme').textContent = '主题 ' + S.theme;
 

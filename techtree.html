@@ -57,6 +57,7 @@
       <button class="btn" id="btnPresent" title="按时代逐幕点亮，用于汇报讲演进">演示</button>
       <button class="btn" id="btnExport">导出 ▾</button>
       <button class="btn" id="btnMaintain" title="在页面里直接编辑节点，改完导出数据文件">维护</button>
+      <button class="btn" id="btnCompact" title="紧凑模式：压缩子列把图收进一屏，代价是同代依赖会画成竖线">紧凑</button>
       <button class="btn" id="btnTheme" title="深空科技风 / 银行专业风">主题 A</button>
       <button class="btn" id="btnHelp">?</button>
       <span id="validBadge"></span>
@@ -76,10 +77,14 @@
 
     <div id="legend"></div>
 
+    <!-- 时代导航：左右边缘若隐若现，点一下直接去上/下一个时代 -->
+    <button class="era-nav" id="eraPrev" title="上一个时代"></button>
+    <button class="era-nav" id="eraNext" title="下一个时代"></button>
+
     <div id="zoomctl">
       <button class="btn" id="zIn" title="放大">＋</button>
       <button class="btn" id="zOut" title="缩小">－</button>
-      <button class="btn" id="zFit" title="适应窗口">⤢</button>
+      <button class="btn" id="zFit" title="在「全览」与「可读」之间切换">⤢</button>
     </div>
 
     <div id="hint">滚轮缩放 · 拖拽平移 · 悬停看依赖链 · <b>单击聚合格下钻</b> · <b>单击右上角 ⓘ 看详情</b> · 单击技术节点看详情 · <b>双击收拢一级</b> · Esc 逐级收起</div>

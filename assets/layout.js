@@ -19,9 +19,10 @@ TT.layout = (function () {
   const LANE_PAD = 28, ROW_GAP = 14;
   const HEAD_H = 66, LEFT_W = 74;
   const TARGET_ROWS = 10;  /* 单格超过这么多节点才再细分子列 */
-  /* 同代依赖深度上限。技术层放宽以换取几乎全部左→右的流向；
-   * 聚合层收紧，因为领域视图要「一屏讲给领导」，宽度比流向更重要。 */
-  const MAX_DEPTH_TECH = 5, MAX_DEPTH_AGG = 1;
+  /* 同代依赖深度不设业务上限 —— 有先后关系的节点绝不能画成垂直线，
+   * 画布该多宽就多宽。20 只是防御异常数据的死循环保险丝。
+   * 「紧凑模式」下才收紧到 1，用于必须一屏投影的场合。 */
+  const MAX_DEPTH_FULL = 20, MAX_DEPTH_COMPACT = 1;
 
   /* 同一时代列内部的依赖深度 —— 让「手机银行 → 智能柜台」这类同代依赖
    * 也能左→右流动，而不是画成难看的回环。
@@ -68,7 +69,8 @@ TT.layout = (function () {
     return depth;
   }
 
-  function compute(units, nodes, h, edges) {
+  function compute(units, nodes, h, edges, opts) {
+    opts = opts || {};
     const m = M(), tx = m.tx;
 
     /* --- 归位：每个单元的时代列与泳道 --- */
@@ -96,9 +98,7 @@ TT.layout = (function () {
     const eraList = tx.eras.filter((_, ci) => used[ci]);
 
     /* --- 同代依赖深度 → 子列序号 --- */
-    const techRatio = placed.filter(p => p.kind === 'tech').length / Math.max(1, placed.length);
-    const maxDepth = techRatio > .6 ? MAX_DEPTH_TECH : MAX_DEPTH_AGG;
-    const depth = localDepth(placed, edges, maxDepth);
+    const depth = localDepth(placed, edges, opts.compact ? MAX_DEPTH_COMPACT : MAX_DEPTH_FULL);
     placed.forEach(p => { p.depth = depth.get(p.id) || 0; });
 
     /* --- 子列规划：先按依赖深度分级，再按拥挤度在级内细分 --- */
