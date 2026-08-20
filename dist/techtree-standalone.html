@@ -449,9 +449,9 @@ body.presenting #presenter { display: block; }
 [data-theme="B"] .edge.faded { opacity: .14; }
 [data-theme="B"] .pb-cell.dim { opacity: .45; }
 
-/* 矩阵视图的行名（画在 SVG 左侧留白里，导出 PNG 时一并带上） */
-.row-label { fill: var(--text); font-size: 12.5px; font-weight: 600; }
-.row-sub   { fill: var(--text-faint); font-size: 9.5px; }
+/* 聚合格的副标题：领域名 · N 项。它是归属标记，作用等同于文明节点上的类别图标，
+   所以刻意做小、做淡，视觉主角是上面那行里程碑名。 */
+.node .owner { fill: var(--text-dim); font-size: 10px; font-weight: 500; pointer-events: none; }
 /* 退役 / 存量维持的节点 */
 .node.lc-sunset .shape { stroke-dasharray: 5 3; }
 
@@ -701,6 +701,53 @@ TT.taxonomy = {
     { id: 'C1202', domain: 'D12', name: '合规与监管科技' },
     { id: 'C1203', domain: 'D12', name: 'AI 治理与模型风险' }
   ],
+
+  /* ---------------- 里程碑名：聚合格在各时代的阶段名称 ----------------
+   * 聚合视图里一个领域会在多个时代各出现一格。如果每格都叫领域名，
+   * 就会变成「同一个名字重复五遍」，看着像出了 bug。
+   *
+   * 正确的做法和《文明》一样 —— 同一条线上的连续节点各有各的名字
+   * （Bronze Working → Iron Working → Steel），领域名退居副标题，
+   * 作用等同于文明节点上的类别图标。
+   *
+   * 下面这 54 个名字是按演进逻辑手工起的，直接就是汇报时的台词。
+   * 能力层（101 格）没有手工命名，自动取该格里最有代表性的技术名。
+   * 键格式：<领域或能力 ID>@<时代 ID>
+   * ========================================================== */
+  milestones: {
+    'D01@E1': '物理网点渠道',      'D01@E2': '电子渠道起步',      'D01@E3': '移动优先',
+    'D01@E4': '全渠道一体化',
+
+    'D02@E1': '账务电子化',        'D02@E2': '联网通用与产品线齐备', 'D02@E3': '财富与资金业务扩张',
+    'D02@E4': '实时化与产品工厂',   'D02@E5': 'AI 驱动的财富顾问',
+
+    'D03@E4': '能力开放起步',      'D03@E5': '生态深耕与数字货币',  'D03@E6': '资产数字化探索',
+
+    'D04@E1': '主机集中式',        'D04@E2': '三层架构与总线集成',  'D04@E3': '服务化改造',
+    'D04@E4': '微服务与分布式核心', 'D04@E5': '核心下移与架构收官',
+
+    'D05@E2': '工程化起步',        'D05@E3': '持续集成与自动化测试', 'D05@E4': 'DevOps 全流程贯通',
+    'D05@E5': 'AI 进入研发流程',    'D05@E6': '智能体自主交付',
+
+    'D06@E1': '报表取数',          'D06@E2': '数据整合起步',       'D06@E3': '数据仓库与治理体系',
+    'D06@E4': '湖仓与实时化',       'D06@E5': '数据研发工程化',
+
+    'D07@E2': '管理报表',          'D07@E3': '自助分析与客户管理',  'D07@E4': '客户数据平台成形',
+    'D07@E5': '实时智能营销',       'D07@E6': '数据要素流通',
+
+    'D08@E4': '机器学习平台化',     'D08@E5': '大模型全面落地',     'D08@E6': '智能体驱动的银行',
+
+    'D09@E1': '机房与主机底座',     'D09@E2': '灾备体系建立',       'D09@E3': '资源池化',
+    'D09@E4': '云原生与多活',       'D09@E5': '混合云与弹性运营',
+
+    'D10@E4': '信创基础替代',       'D10@E5': '智能算力与全栈信创',  'D10@E6': '算力自主与前沿探索',
+
+    'D11@E1': '边界防护',          'D11@E2': '密码基础设施',       'D11@E3': '账号与审计体系',
+    'D11@E4': '身份与数据安全合规',  'D11@E5': '隐私计算与零信任',   'D11@E6': '前沿密码与自适应防御',
+
+    'D12@E2': '合规底线能力',       'D12@E3': '风险计量与监管报送',  'D12@E4': '决策引擎与模型化监测',
+    'D12@E5': '实时智能风控',       'D12@E6': 'AI 治理制度化'
+  },
 
   /* ---------------- 单位视图下的建设状态 ---------------- */
   status: [
@@ -2584,6 +2631,24 @@ TT.model = (function () {
     return tx.eras.filter(e => set.has(e.id)).map(e => e.id);
   }
 
+  /* 聚合格的显示名：优先用手工策划的里程碑名；能力层没有手工命名的，
+   * 自动取该格里最有代表性的技术 —— 业务价值高、下游依赖多的那个。
+   * 之所以不直接用领域名，是因为一个领域会在多个时代各出现一格，
+   * 都叫领域名就变成「同一个名字重复五遍」。 */
+  let _downstream = null;
+  function milestoneOf(unitId, nodes, h) {
+    const curated = tx.milestones && tx.milestones[unitId];
+    if (curated) return curated;
+    const list = descendants(unitId, nodes, h);
+    if (!list.length) return '';
+    if (!_downstream) {
+      _downstream = new Map();
+      nodes.forEach(n => (n.deps || []).forEach(d => _downstream.set(d, (_downstream.get(d) || 0) + 1)));
+    }
+    const score = t => (t.value || 0) * 3 + (_downstream.get(t.id) || 0);
+    return [...list].sort((a, b) => score(b) - score(a))[0].name;
+  }
+
   /* ---------------- 可见单元集：三档全局粒度 + 单点混合展开 ----------------
    * expanded 是一个 Set，含被展开的领域 / 能力 ID（不带 @时代 后缀）。 */
   function visibleUnits(nodes, expanded, h) {
@@ -2739,7 +2804,7 @@ TT.model = (function () {
     tx, capById, domById, archById, eraIdx, statusById, maturityById,
     adoptionById, autonomyById, tagById, awardsByNode,
     archOfCap, domainOfCap, orgList, orgById, resolve, hierarchy, descendants,
-    visibleUnits, carrierOf, splitUnitId, erasOf, progressOf, maturityOf,
+    visibleUnits, carrierOf, splitUnitId, erasOf, milestoneOf, progressOf, maturityOf,
     buildGraph, reach, planClosure, schedule, compare, gapVsBenchmark
   };
 })();
@@ -2759,8 +2824,8 @@ TT.layout = (function () {
   const M = () => TT.model;
 
   const SIZE = {
-    domain: { w: 220, h: 70 },
-    cap:    { w: 204, h: 62 },
+    domain: { w: 208, h: 66 },
+    cap:    { w: 198, h: 62 },
     tech:   { w: 182, h: 54 }
   };
   const SUB_GAP = 16;      /* 子列间距 */
@@ -2817,72 +2882,8 @@ TT.layout = (function () {
     return depth;
   }
 
-  /* ───────────── 矩阵布局（聚合视图专用）─────────────
-   * 一个领域 / 能力占一整行，横跨它有技术的所有时代，用一条带连起来；
-   * 名称只在左侧冻结列出现一次，格子里只放数量与完成度。
-   * 这样就不会出现「同一个领域在图上冒出来好几次」的困惑。 */
-  const MX = { cellW: 172, cellH: 46, rowGap: 9, colPad: 22, leftW: 228, labelX: 78 };
-
-  function computeMatrix(units, nodes, h) {
-    const m = M(), tx = m.tx;
-
-    const eraUsed = tx.eras.filter(e => units.some(u => u.era === e.id));
-    const colIdx = new Map(eraUsed.map((e, i) => [e.id, i]));
-    const colW = MX.cellW + MX.colPad * 2;
-    const cols = eraUsed.map((e, i) => ({ era: e, i, subs: 1, x: MX.leftW + i * colW, w: colW }));
-    const width = MX.leftW + eraUsed.length * colW + 16;
-
-    /* 行的顺序：先按泳道，再按分类体系里的既有顺序 */
-    const order = [];
-    tx.domains.forEach(d => {
-      if (units.some(u => u.base === d.id)) order.push({ base: d.id, kind: 'domain', ref: d, arch: d.arch });
-      tx.capabilities.filter(c => c.domain === d.id).forEach(c => {
-        if (units.some(u => u.base === c.id)) order.push({ base: c.id, kind: 'cap', ref: c, arch: d.arch });
-      });
-    });
-
-    const lanes = tx.arch.filter(a => order.some(r => r.arch === a.id))
-      .map(a => ({ ...a })).sort((a, b) => a.lane - b.lane);
-    const rowH = MX.cellH + MX.rowGap;
-    let y = HEAD_H;
-    lanes.forEach(l => {
-      const rows = order.filter(r => r.arch === l.id);
-      l.h = Math.max(rows.length * rowH, rowH) + LANE_PAD * 2;
-      l.y = y; y += l.h;
-      rows.forEach((r, i) => { r.lane = l.lane; r.y = l.y + LANE_PAD + i * rowH; r.h = MX.cellH; });
-    });
-    const height = y + 24;
-
-    const placed = units.map(u => {
-      const row = order.find(r => r.base === u.base);
-      const c = cols[colIdx.get(u.era)];
-      const x = c.x + MX.colPad;
-      return {
-        ...u, kind: u.kind, lane: row.lane, arch: row.arch, row: row.base,
-        techs: m.descendants(u.id, nodes, h),
-        w: MX.cellW, h: MX.cellH, col: colIdx.get(u.era),
-        x, y: row.y, cx: x + MX.cellW / 2, cy: row.y + MX.cellH / 2
-      };
-    });
-
-    /* 每行的带：从该行最左的格子延伸到最右 */
-    order.forEach(r => {
-      const mine = placed.filter(p => p.row === r.base);
-      r.x0 = Math.min(...mine.map(p => p.x));
-      r.x1 = Math.max(...mine.map(p => p.x + p.w));
-      r.count = mine.reduce((s, p) => s + p.techs.length, 0);
-    });
-
-    return { units: placed, lanes, cols, rows: order, width, height,
-             LEFT_W: MX.leftW, LABEL_X: MX.labelX, HEAD_H, matrix: true };
-  }
-
   function compute(units, nodes, h, edges) {
     const m = M(), tx = m.tx;
-
-    /* 全是聚合单元时走矩阵布局；一旦混入技术节点就回到自由 DAG 布局，
-     * 因为技术层按行铺会变成一张极高极窄的图，反而看不清。 */
-    if (units.length && units.every(u => u.kind !== 'tech')) return computeMatrix(units, nodes, h);
 
     /* --- 归位：每个单元的时代列与泳道 --- */
     const placed = units.map(u => {
@@ -2992,7 +2993,7 @@ TT.layout = (function () {
       });
     });
 
-    return { units: placed, lanes, cols, width, height, LEFT_W, HEAD_H, matrix: false };
+    return { units: placed, lanes, cols, width, height, LEFT_W, HEAD_H };
   }
 
   /* 依赖连线：左出右进的三次贝塞尔；逆向或同列时从下方绕行 */
@@ -3191,30 +3192,12 @@ TT.render = (function () {
     const lastLane = L.lanes.at(-1);
     bg.push(`<line class="lane-line" x1="0" y1="${lastLane.y + lastLane.h}" x2="${L.width}" y2="${lastLane.y + lastLane.h}"/>`);
 
-    /* ④ 矩阵视图：每行一条横跨时代的带 + 左侧行名（行名画进 SVG，导出 PNG 才带得上） */
-    if (L.matrix) {
-      L.rows.forEach(r => {
-        const laneR = L.lanes.find(l => l.lane === r.lane);
-        bg.push(`<text class="row-label" x="${L.LABEL_X}" y="${r.y + r.h / 2 - 3}">` +
-          `${esc(fit(r.ref.name, L.LEFT_W - L.LABEL_X - 12, 12))}</text>`);
-        bg.push(`<text class="row-sub" x="${L.LABEL_X}" y="${r.y + r.h / 2 + 11}">` +
-          `全时代共 ${r.count} 项</text>`);
-        const col = laneBar(laneR.hue);
-        bg.push(`<rect x="${r.x0 - 12}" y="${r.y - 5}" width="${r.x1 - r.x0 + 24}" height="${r.h + 10}"
-          rx="${(r.h + 10) / 2}" fill="${col}" opacity="${light ? .10 : .085}"/>`);
-        bg.push(`<rect x="${r.x0 - 12}" y="${r.y - 5}" width="${r.x1 - r.x0 + 24}" height="${r.h + 10}"
-          rx="${(r.h + 10) / 2}" fill="none" stroke="${col}" stroke-opacity=".45" stroke-width="1"/>`);
-        bg.push(`<line x1="${r.x0}" y1="${r.y + r.h / 2}" x2="${r.x1}" y2="${r.y + r.h / 2}"
-          stroke="${col}" stroke-opacity=".34" stroke-width="1.4" stroke-dasharray="2 4"/>`);
-      });
-    }
-
     parts.push(`<g class="bg">${bg.join('')}</g>`);
 
     /* --- 跨 5A 宽卡片的背景带（如「人工智能与大模型」领域） --- */
     const spans = [];
     const spanGroups = new Map();
-    if (!L.matrix) L.units.forEach(u => {
+    L.units.forEach(u => {
       if (u.kind === 'domain' && u.ref.spanArch?.length) {
         const g = spanGroups.get(u.base) || { x0: Infinity, x1: -Infinity };
         g.x0 = Math.min(g.x0, u.x); g.x1 = Math.max(g.x1, u.x + u.w);
@@ -3259,10 +3242,11 @@ TT.render = (function () {
 
       const padX = 12;
       let ty = u.y + (isTech ? 21 : 22);
-      if (isTech || !L.matrix) {
-        g.push(`<text class="title" x="${u.x + padX}" y="${ty}" font-size="${titleSize}">` +
-          `${esc(fit(u.ref.name, u.w - padX * 2 - (isTech ? 16 : 34), titleSize))}</text>`);
-      }
+      /* 聚合格的主标题是「该时代的里程碑名」而不是领域名 ——
+       * 否则同一个领域在五个时代里会显示五个一模一样的标题。 */
+      const heading = isTech ? u.ref.name : (u._milestone || u.ref.name);
+      g.push(`<text class="title" x="${u.x + padX}" y="${ty}" font-size="${titleSize}">` +
+        `${esc(fit(heading, u.w - padX * 2 - (isTech ? 16 : 32), titleSize))}</text>`);
 
       if (isTech) {
         const n = u.ref;
@@ -3280,24 +3264,6 @@ TT.render = (function () {
           g.push(`<circle class="pulse" cx="${u.x + u.w - 11}" cy="${u.y + 11}" r="4" fill="${color}"/>`);
         if (n._status === 'building')
           g.push(`<path class="building-ring" d="${shapePath(u.x - 3, u.y - 3, u.w + 6, u.h + 6, hex)}"/>`);
-      } else if (L.matrix) {
-        /* 矩阵格：名称已经在行名里，格子里只放数量与完成度 */
-        const prog = st.orgId === 'benchmark' ? m.maturityOf(u.techs) : m.progressOf(u.techs);
-        const R = 14, cx = u.x + u.w - R - 12, cy2 = u.y + u.h / 2, C = 2 * Math.PI * R;
-        g.push(`<circle class="ring-bg" cx="${cx}" cy="${cy2}" r="${R}"/>`);
-        g.push(`<circle class="ring-fg" cx="${cx}" cy="${cy2}" r="${R}" stroke="${color}"` +
-          ` stroke-dasharray="${(C * prog.pct).toFixed(1)} ${C.toFixed(1)}"` +
-          ` style="transform-origin:${cx}px ${cy2}px"/>`);
-        g.push(`<text class="cnt" x="${cx}" y="${cy2 + 4}" text-anchor="middle" font-size="10.5">${Math.round(prog.pct * 100)}</text>`);
-        g.push(`<text class="title" x="${u.x + 12}" y="${u.y + 20}" font-size="13">${u.techs.length} 项</text>`);
-        const sub = st.orgId === 'benchmark'
-          ? (m.maturityById.get([...u.techs].sort((a, b) =>
-              (m.maturityById.get(b.maturity)?.order || 0) - (m.maturityById.get(a.maturity)?.order || 0))[0]?.maturity)?.name || '')
-          : (() => { const c = m.progressOf(u.techs).stat;
-              return `建成 ${c.built || 0} · 在建 ${c.building || 0}`; })();
-        g.push(`<text class="meta" x="${u.x + 12}" y="${u.y + u.h - 10}">${esc(fit(sub, u.w - 24 - R * 2, 10))}</text>`);
-        const aw = u.techs.reduce((a, t) => a + (t._awards?.length || 0), 0);
-        if (aw) g.push(`<text class="award" x="${u.x + u.w - R * 2 - 22}" y="${u.y + 19}">🏆</text>`);
       } else {
         /* 自由布局下的聚合节点：进度环 + 子节点统计 */
         const prog = st.orgId === 'benchmark' ? m.maturityOf(u.techs) : m.progressOf(u.techs);
@@ -3310,22 +3276,17 @@ TT.render = (function () {
           ` style="transform-origin:${cx}px ${cy2}px"/>`);
         g.push(`<text class="cnt" x="${cx}" y="${cy2 + 4}" text-anchor="middle" font-size="${u.kind === 'domain' ? 11.5 : 10}">${Math.round(prog.pct * 100)}</text>`);
 
+        const owner = `${u.ref.name} · ${u.techs.length} 项`;
+        g.push(`<text class="owner" x="${u.x + padX}" y="${u.y + u.h - 24}">${esc(fit(owner, u.w - padX - R * 2 - 20, 10))}</text>`);
         const s = st.orgId === 'benchmark'
-          ? `${u.techs.length} 项技术`
-          : (() => {
-              const c = m.progressOf(u.techs).stat;
-              return `${u.techs.length} 项 · 建成 ${c.built || 0} · 在建 ${c.building || 0} · 未启 ${(c.none || 0) + (c.unknown || 0)}`;
-            })();
-        g.push(`<text class="meta" x="${u.x + padX}" y="${u.y + u.h - (u.kind === 'domain' ? 22 : 11)}">${esc(fit(s, u.w - padX - R * 2 - 22, 10))}</text>`);
+          ? (m.maturityById.get([...u.techs].sort((a, b) =>
+              (m.maturityById.get(b.maturity)?.order || 0) - (m.maturityById.get(a.maturity)?.order || 0))[0]?.maturity)?.name || '')
+          : (() => { const c = m.progressOf(u.techs).stat;
+              return `建成 ${c.built || 0} · 在建 ${c.building || 0} · 未启 ${(c.none || 0) + (c.unknown || 0)}`; })();
+        g.push(`<text class="meta" x="${u.x + padX}" y="${u.y + u.h - 10}">${esc(fit(s, u.w - padX - R * 2 - 20, 10))}</text>`);
 
-        if (u.kind === 'domain') {
-          const awards = u.techs.reduce((a, t) => a + (t._awards?.length || 0), 0);
-          const extra = [];
-          if (u.ref.spanArch?.length) extra.push('横跨 5A');
-          if (awards) extra.push(`🏆 ${awards}`);
-          extra.push('双击展开');
-          g.push(`<text class="meta" x="${u.x + padX}" y="${u.y + u.h - 11}" opacity=".75">${esc(fit(extra.join(' · '), u.w - padX - R * 2 - 22, 10))}</text>`);
-        }
+        const aw = u.techs.reduce((a, t) => a + (t._awards?.length || 0), 0);
+        if (aw) g.push(`<text class="award" x="${u.x + u.w - R * 2 - 24}" y="${u.y + 19}">🏆</text>`);
       }
 
       /* 退役 / 存量维持的技术叠一层斜纹 + 角标，
@@ -3626,8 +3587,8 @@ TT.ui = (function () {
     const prog = benchmark ? m.maturityOf(techs) : m.progressOf(techs);
     const arch = kind === 'domain' ? ref.arch : m.archOfCap(ref.id);
 
-    $('#dwTitle').textContent = ref.name;
-    $('#dwEn').textContent = `${kind === 'domain' ? 'L0 领域' : 'L1 能力'} · ${ref.id}` +
+    $('#dwTitle').textContent = (unitId && m.milestoneOf(unitId, S.nodes, S.h)) || ref.name;
+    $('#dwEn').textContent = `${ref.name} · ${kind === 'domain' ? 'L0 领域' : 'L1 能力'} · ${ref.id}` +
       (eraObj ? ` · 本时代 ${techs.length} 项 / 全时代共 ${allTechs.length} 项` : ` · 覆盖 ${techs.length} 项技术`);
     $('#dwTags').innerHTML = [
       eraObj ? `<span class="tag">${eraObj.roman} ${eraObj.name}</span>` : '',
@@ -3695,8 +3656,10 @@ TT.ui = (function () {
     const unitName = uid => {
       const { base, era } = m.splitUnitId(uid);
       const e = m.tx.eras.find(x => x.id === era);
-      const r = m.capById.get(base) || m.domById.get(base) || S.byId.get(base);
-      return (r ? r.name : uid) + (e ? ` · ${e.roman}` : '');
+      if (S.byId.has(base)) return S.byId.get(base).name;
+      const ms = m.milestoneOf(uid, S.nodes, S.h);
+      const r = m.capById.get(base) || m.domById.get(base);
+      return (ms || (r ? r.name : uid)) + (e ? ` · ${e.roman}` : '');
     };
     const listBox = (map, empty) => map.size
       ? `<div class="chips">${[...map].map(([uid, why]) =>
@@ -4315,6 +4278,9 @@ ${body}
         if (!allBuilt) S.lockedEdges.add(e.from + '>' + e.to);
       });
     }
+
+    /* 聚合格的标题用里程碑名，先算好挂到单元上 */
+    units.forEach(u => { if (u.kind !== 'tech') u._milestone = m.milestoneOf(u.id, S.nodes, S.h); });
 
     S.L = TT.layout.compute(units, S.nodes, S.h, S.edges);
     S.units = S.L.units;

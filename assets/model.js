@@ -93,6 +93,24 @@ TT.model = (function () {
     return tx.eras.filter(e => set.has(e.id)).map(e => e.id);
   }
 
+  /* 聚合格的显示名：优先用手工策划的里程碑名；能力层没有手工命名的，
+   * 自动取该格里最有代表性的技术 —— 业务价值高、下游依赖多的那个。
+   * 之所以不直接用领域名，是因为一个领域会在多个时代各出现一格，
+   * 都叫领域名就变成「同一个名字重复五遍」。 */
+  let _downstream = null;
+  function milestoneOf(unitId, nodes, h) {
+    const curated = tx.milestones && tx.milestones[unitId];
+    if (curated) return curated;
+    const list = descendants(unitId, nodes, h);
+    if (!list.length) return '';
+    if (!_downstream) {
+      _downstream = new Map();
+      nodes.forEach(n => (n.deps || []).forEach(d => _downstream.set(d, (_downstream.get(d) || 0) + 1)));
+    }
+    const score = t => (t.value || 0) * 3 + (_downstream.get(t.id) || 0);
+    return [...list].sort((a, b) => score(b) - score(a))[0].name;
+  }
+
   /* ---------------- 可见单元集：三档全局粒度 + 单点混合展开 ----------------
    * expanded 是一个 Set，含被展开的领域 / 能力 ID（不带 @时代 后缀）。 */
   function visibleUnits(nodes, expanded, h) {
@@ -248,7 +266,7 @@ TT.model = (function () {
     tx, capById, domById, archById, eraIdx, statusById, maturityById,
     adoptionById, autonomyById, tagById, awardsByNode,
     archOfCap, domainOfCap, orgList, orgById, resolve, hierarchy, descendants,
-    visibleUnits, carrierOf, splitUnitId, erasOf, progressOf, maturityOf,
+    visibleUnits, carrierOf, splitUnitId, erasOf, milestoneOf, progressOf, maturityOf,
     buildGraph, reach, planClosure, schedule, compare, gapVsBenchmark
   };
 })();

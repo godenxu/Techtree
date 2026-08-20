@@ -176,30 +176,12 @@ TT.render = (function () {
     const lastLane = L.lanes.at(-1);
     bg.push(`<line class="lane-line" x1="0" y1="${lastLane.y + lastLane.h}" x2="${L.width}" y2="${lastLane.y + lastLane.h}"/>`);
 
-    /* ④ 矩阵视图：每行一条横跨时代的带 + 左侧行名（行名画进 SVG，导出 PNG 才带得上） */
-    if (L.matrix) {
-      L.rows.forEach(r => {
-        const laneR = L.lanes.find(l => l.lane === r.lane);
-        bg.push(`<text class="row-label" x="${L.LABEL_X}" y="${r.y + r.h / 2 - 3}">` +
-          `${esc(fit(r.ref.name, L.LEFT_W - L.LABEL_X - 12, 12))}</text>`);
-        bg.push(`<text class="row-sub" x="${L.LABEL_X}" y="${r.y + r.h / 2 + 11}">` +
-          `全时代共 ${r.count} 项</text>`);
-        const col = laneBar(laneR.hue);
-        bg.push(`<rect x="${r.x0 - 12}" y="${r.y - 5}" width="${r.x1 - r.x0 + 24}" height="${r.h + 10}"
-          rx="${(r.h + 10) / 2}" fill="${col}" opacity="${light ? .10 : .085}"/>`);
-        bg.push(`<rect x="${r.x0 - 12}" y="${r.y - 5}" width="${r.x1 - r.x0 + 24}" height="${r.h + 10}"
-          rx="${(r.h + 10) / 2}" fill="none" stroke="${col}" stroke-opacity=".45" stroke-width="1"/>`);
-        bg.push(`<line x1="${r.x0}" y1="${r.y + r.h / 2}" x2="${r.x1}" y2="${r.y + r.h / 2}"
-          stroke="${col}" stroke-opacity=".34" stroke-width="1.4" stroke-dasharray="2 4"/>`);
-      });
-    }
-
     parts.push(`<g class="bg">${bg.join('')}</g>`);
 
     /* --- 跨 5A 宽卡片的背景带（如「人工智能与大模型」领域） --- */
     const spans = [];
     const spanGroups = new Map();
-    if (!L.matrix) L.units.forEach(u => {
+    L.units.forEach(u => {
       if (u.kind === 'domain' && u.ref.spanArch?.length) {
         const g = spanGroups.get(u.base) || { x0: Infinity, x1: -Infinity };
         g.x0 = Math.min(g.x0, u.x); g.x1 = Math.max(g.x1, u.x + u.w);
@@ -244,10 +226,11 @@ TT.render = (function () {
 
       const padX = 12;
       let ty = u.y + (isTech ? 21 : 22);
-      if (isTech || !L.matrix) {
-        g.push(`<text class="title" x="${u.x + padX}" y="${ty}" font-size="${titleSize}">` +
-          `${esc(fit(u.ref.name, u.w - padX * 2 - (isTech ? 16 : 34), titleSize))}</text>`);
-      }
+      /* 聚合格的主标题是「该时代的里程碑名」而不是领域名 ——
+       * 否则同一个领域在五个时代里会显示五个一模一样的标题。 */
+      const heading = isTech ? u.ref.name : (u._milestone || u.ref.name);
+      g.push(`<text class="title" x="${u.x + padX}" y="${ty}" font-size="${titleSize}">` +
+        `${esc(fit(heading, u.w - padX * 2 - (isTech ? 16 : 32), titleSize))}</text>`);
 
       if (isTech) {
         const n = u.ref;
@@ -265,24 +248,6 @@ TT.render = (function () {
           g.push(`<circle class="pulse" cx="${u.x + u.w - 11}" cy="${u.y + 11}" r="4" fill="${color}"/>`);
         if (n._status === 'building')
           g.push(`<path class="building-ring" d="${shapePath(u.x - 3, u.y - 3, u.w + 6, u.h + 6, hex)}"/>`);
-      } else if (L.matrix) {
-        /* 矩阵格：名称已经在行名里，格子里只放数量与完成度 */
-        const prog = st.orgId === 'benchmark' ? m.maturityOf(u.techs) : m.progressOf(u.techs);
-        const R = 14, cx = u.x + u.w - R - 12, cy2 = u.y + u.h / 2, C = 2 * Math.PI * R;
-        g.push(`<circle class="ring-bg" cx="${cx}" cy="${cy2}" r="${R}"/>`);
-        g.push(`<circle class="ring-fg" cx="${cx}" cy="${cy2}" r="${R}" stroke="${color}"` +
-          ` stroke-dasharray="${(C * prog.pct).toFixed(1)} ${C.toFixed(1)}"` +
-          ` style="transform-origin:${cx}px ${cy2}px"/>`);
-        g.push(`<text class="cnt" x="${cx}" y="${cy2 + 4}" text-anchor="middle" font-size="10.5">${Math.round(prog.pct * 100)}</text>`);
-        g.push(`<text class="title" x="${u.x + 12}" y="${u.y + 20}" font-size="13">${u.techs.length} 项</text>`);
-        const sub = st.orgId === 'benchmark'
-          ? (m.maturityById.get([...u.techs].sort((a, b) =>
-              (m.maturityById.get(b.maturity)?.order || 0) - (m.maturityById.get(a.maturity)?.order || 0))[0]?.maturity)?.name || '')
-          : (() => { const c = m.progressOf(u.techs).stat;
-              return `建成 ${c.built || 0} · 在建 ${c.building || 0}`; })();
-        g.push(`<text class="meta" x="${u.x + 12}" y="${u.y + u.h - 10}">${esc(fit(sub, u.w - 24 - R * 2, 10))}</text>`);
-        const aw = u.techs.reduce((a, t) => a + (t._awards?.length || 0), 0);
-        if (aw) g.push(`<text class="award" x="${u.x + u.w - R * 2 - 22}" y="${u.y + 19}">🏆</text>`);
       } else {
         /* 自由布局下的聚合节点：进度环 + 子节点统计 */
         const prog = st.orgId === 'benchmark' ? m.maturityOf(u.techs) : m.progressOf(u.techs);
@@ -295,22 +260,17 @@ TT.render = (function () {
           ` style="transform-origin:${cx}px ${cy2}px"/>`);
         g.push(`<text class="cnt" x="${cx}" y="${cy2 + 4}" text-anchor="middle" font-size="${u.kind === 'domain' ? 11.5 : 10}">${Math.round(prog.pct * 100)}</text>`);
 
+        const owner = `${u.ref.name} · ${u.techs.length} 项`;
+        g.push(`<text class="owner" x="${u.x + padX}" y="${u.y + u.h - 24}">${esc(fit(owner, u.w - padX - R * 2 - 20, 10))}</text>`);
         const s = st.orgId === 'benchmark'
-          ? `${u.techs.length} 项技术`
-          : (() => {
-              const c = m.progressOf(u.techs).stat;
-              return `${u.techs.length} 项 · 建成 ${c.built || 0} · 在建 ${c.building || 0} · 未启 ${(c.none || 0) + (c.unknown || 0)}`;
-            })();
-        g.push(`<text class="meta" x="${u.x + padX}" y="${u.y + u.h - (u.kind === 'domain' ? 22 : 11)}">${esc(fit(s, u.w - padX - R * 2 - 22, 10))}</text>`);
+          ? (m.maturityById.get([...u.techs].sort((a, b) =>
+              (m.maturityById.get(b.maturity)?.order || 0) - (m.maturityById.get(a.maturity)?.order || 0))[0]?.maturity)?.name || '')
+          : (() => { const c = m.progressOf(u.techs).stat;
+              return `建成 ${c.built || 0} · 在建 ${c.building || 0} · 未启 ${(c.none || 0) + (c.unknown || 0)}`; })();
+        g.push(`<text class="meta" x="${u.x + padX}" y="${u.y + u.h - 10}">${esc(fit(s, u.w - padX - R * 2 - 20, 10))}</text>`);
 
-        if (u.kind === 'domain') {
-          const awards = u.techs.reduce((a, t) => a + (t._awards?.length || 0), 0);
-          const extra = [];
-          if (u.ref.spanArch?.length) extra.push('横跨 5A');
-          if (awards) extra.push(`🏆 ${awards}`);
-          extra.push('双击展开');
-          g.push(`<text class="meta" x="${u.x + padX}" y="${u.y + u.h - 11}" opacity=".75">${esc(fit(extra.join(' · '), u.w - padX - R * 2 - 22, 10))}</text>`);
-        }
+        const aw = u.techs.reduce((a, t) => a + (t._awards?.length || 0), 0);
+        if (aw) g.push(`<text class="award" x="${u.x + u.w - R * 2 - 24}" y="${u.y + 19}">🏆</text>`);
       }
 
       /* 退役 / 存量维持的技术叠一层斜纹 + 角标，

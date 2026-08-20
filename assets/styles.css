@@ -440,9 +440,9 @@ body.presenting #presenter { display: block; }
 [data-theme="B"] .edge.faded { opacity: .14; }
 [data-theme="B"] .pb-cell.dim { opacity: .45; }
 
-/* 矩阵视图的行名（画在 SVG 左侧留白里，导出 PNG 时一并带上） */
-.row-label { fill: var(--text); font-size: 12.5px; font-weight: 600; }
-.row-sub   { fill: var(--text-faint); font-size: 9.5px; }
+/* 聚合格的副标题：领域名 · N 项。它是归属标记，作用等同于文明节点上的类别图标，
+   所以刻意做小、做淡，视觉主角是上面那行里程碑名。 */
+.node .owner { fill: var(--text-dim); font-size: 10px; font-weight: 500; pointer-events: none; }
 /* 退役 / 存量维持的节点 */
 .node.lc-sunset .shape { stroke-dasharray: 5 3; }
 

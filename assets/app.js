@@ -142,6 +142,9 @@
       });
     }
 
+    /* 聚合格的标题用里程碑名，先算好挂到单元上 */
+    units.forEach(u => { if (u.kind !== 'tech') u._milestone = m.milestoneOf(u.id, S.nodes, S.h); });
+
     S.L = TT.layout.compute(units, S.nodes, S.h, S.edges);
     S.units = S.L.units;
 

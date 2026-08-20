@@ -262,8 +262,8 @@ TT.ui = (function () {
     const prog = benchmark ? m.maturityOf(techs) : m.progressOf(techs);
     const arch = kind === 'domain' ? ref.arch : m.archOfCap(ref.id);
 
-    $('#dwTitle').textContent = ref.name;
-    $('#dwEn').textContent = `${kind === 'domain' ? 'L0 领域' : 'L1 能力'} · ${ref.id}` +
+    $('#dwTitle').textContent = (unitId && m.milestoneOf(unitId, S.nodes, S.h)) || ref.name;
+    $('#dwEn').textContent = `${ref.name} · ${kind === 'domain' ? 'L0 领域' : 'L1 能力'} · ${ref.id}` +
       (eraObj ? ` · 本时代 ${techs.length} 项 / 全时代共 ${allTechs.length} 项` : ` · 覆盖 ${techs.length} 项技术`);
     $('#dwTags').innerHTML = [
       eraObj ? `<span class="tag">${eraObj.roman} ${eraObj.name}</span>` : '',
@@ -331,8 +331,10 @@ TT.ui = (function () {
     const unitName = uid => {
       const { base, era } = m.splitUnitId(uid);
       const e = m.tx.eras.find(x => x.id === era);
-      const r = m.capById.get(base) || m.domById.get(base) || S.byId.get(base);
-      return (r ? r.name : uid) + (e ? ` · ${e.roman}` : '');
+      if (S.byId.has(base)) return S.byId.get(base).name;
+      const ms = m.milestoneOf(uid, S.nodes, S.h);
+      const r = m.capById.get(base) || m.domById.get(base);
+      return (ms || (r ? r.name : uid)) + (e ? ` · ${e.roman}` : '');
     };
     const listBox = (map, empty) => map.size
       ? `<div class="chips">${[...map].map(([uid, why]) =>
