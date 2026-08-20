@@ -283,27 +283,49 @@
     const k = S.view.k, W = $('#stage').clientWidth, H = $('#stage').clientHeight;
     const eraBox = $('#eraBar'), laneBox = $('#laneBar');
 
-    eraBox.innerHTML = S.L.cols.map(c => {
-      const x0 = c.x * k + S.view.x, x1 = (c.x + c.w) * k + S.view.x;
-      if (x1 < 46 || x0 > W) return '';
-      /* 列被拖出屏幕一半时，标签贴边停住，始终能看到当前时代 */
-      const cx = Math.min(Math.max((x0 + x1) / 2, Math.max(x0, 64) + 46), Math.min(x1, W) - 46);
-      const hue = c.era.hue ?? 210;
+    /* 时代标签有两种排布：
+     *   无筛选 —— 跟着时代列走，标签就是列头
+     *   有筛选 —— 布局里只剩被选中的那一列，其余时代没有列可依附，
+     *             所以整条改成居中的步进器：当前高亮，相邻半透明可点，
+     *             一眼看到"上一个 / 下一个去哪"，也就不用在画布里另做导航按钮。 */
+    const eras = M().tx.eras;
+    const filtering = S.eraFilter.size === 1;
+    const curIdx = filtering ? eras.findIndex(e => S.eraFilter.has(e.id)) : -1;
+
+    const chip = (era, left, cls, tip) => {
+      const hue = era.hue ?? 210;
       const col = S.theme === 'B' ? `hsl(${hue},55%,42%)` : `hsl(${hue},72%,64%)`;
-      const eon = S.eraFilter.has(c.era.id);
-      const eoff = S.eraFilter.size && !eon;
-      return `<div class="era-chip ${eoff ? 'dim' : ''} ${eon ? 'on' : ''}" data-era="${c.era.id}"
-                   style="left:${cx}px" title="${eon ? '取消只看' : '只看'}${c.era.name}">
-        <div class="rm" style="color:${col}">${c.era.roman}</div>
-        <div class="nm">${c.era.name}</div>
-        <div class="pd">${c.era.period}</div>
+      return `<div class="era-chip ${cls}" data-era="${era.id}" style="left:${left}px" title="${tip}">
+        <div class="rm" style="color:${col}">${era.roman}</div>
+        <div class="nm">${era.name}</div>
+        <div class="pd">${era.period}</div>
         <div class="ul" style="background:${col}"></div>
       </div>`;
-    }).join('');
+    };
+
+    if (filtering) {
+      const step = Math.min(190, (W - 160) / eras.length);
+      const x0 = W / 2 - (eras.length - 1) * step / 2;
+      eraBox.innerHTML = eras.map((e, i) => {
+        const d = i - curIdx;
+        const cls = d === 0 ? 'on' : (Math.abs(d) === 1 ? 'adjacent ' + (d < 0 ? 'prev' : 'next') : 'dim');
+        const tip = d === 0 ? '取消只看 ' + e.name
+          : (Math.abs(d) === 1 ? (d < 0 ? '上一个时代：' : '下一个时代：') + e.name : '切换到 ' + e.name);
+        return chip(e, x0 + i * step, cls, tip);
+      }).join('');
+    } else {
+      eraBox.innerHTML = S.L.cols.map(c => {
+        const x0 = c.x * k + S.view.x, x1 = (c.x + c.w) * k + S.view.x;
+        if (x1 < 46 || x0 > W) return '';
+        const cx = Math.min(Math.max((x0 + x1) / 2, Math.max(x0, 64) + 46), Math.min(x1, W) - 46);
+        return chip(c.era, cx, '', '只看 ' + c.era.name);
+      }).join('');
+    }
+
+    /* 单选语义：点未选中的时代 = 直接切换过去；点已选中的 = 取消筛选 */
     eraBox.querySelectorAll('.era-chip').forEach(c => c.onclick = () => {
       const e = c.dataset.era;
-      S.eraFilter.has(e) ? S.eraFilter.delete(e) : S.eraFilter.add(e);
-      if (S.eraFilter.size === M().tx.eras.length) S.eraFilter.clear();
+      S.eraFilter = (S.eraFilter.size === 1 && S.eraFilter.has(e)) ? new Set() : new Set([e]);
       rebuild(); fit();
     });
 
@@ -351,7 +373,6 @@
     }
     g.setAttribute('transform', `translate(${S.view.x},${S.view.y}) scale(${S.view.k})`);
     paintSticky();
-    paintEraNav();
   }
   /* 放开子列上限之后画布可能很宽（领域层约 5000px）。
    * 硬要一屏塞下就会把卡片缩到看不清字，所以分两种取景：
@@ -429,54 +450,6 @@
       if (onUp) e.classList.add('up');
       else if (onDown) e.classList.add('down');
       else e.classList.add('faded');
-    });
-  }
-
-  /* ---------------- 时代导航 ----------------
-   * 单时代筛选下点它 = 直接换到相邻时代（不用先取消筛选再选）；
-   * 没有筛选时点它 = 把镜头平移到相邻时代那一列。 */
-  function currentEraIdx() {
-    if (!S.L) return 0;
-    if (S.eraFilter.size === 1) {
-      const only = [...S.eraFilter][0];
-      return M().tx.eras.findIndex(e => e.id === only);
-    }
-    /* 取视口中心最接近的那一列 */
-    const st = $('#stage');
-    const centerWorld = (st.clientWidth / 2 - S.view.x) / S.view.k;
-    let best = 0, bd = Infinity;
-    S.L.cols.forEach(c => {
-      const d = Math.abs(c.x + c.w / 2 - centerWorld);
-      if (d < bd) { bd = d; best = M().tx.eras.indexOf(c.era); }
-    });
-    return best;
-  }
-
-  function paintEraNav() {
-    const eras = M().tx.eras, i = currentEraIdx();
-    const filtering = S.eraFilter.size === 1;
-    [['#eraPrev', -1, '‹'], ['#eraNext', 1, '›']].forEach(([sel, dir, arrow]) => {
-      const btn = $(sel);
-      /* 筛选态下只在已有节点的时代之间跳；非筛选态按实际画出来的列跳 */
-      const pool = filtering ? eras.map((e, k) => k) : S.L.cols.map(c => eras.indexOf(c.era));
-      const cand = dir < 0 ? pool.filter(k => k < i).pop() : pool.filter(k => k > i).shift();
-      if (cand === undefined) { btn.classList.add('hidden'); return; }
-      const e = eras[cand];
-      const hue = e.hue ?? 210;
-      const col = S.theme === 'B' ? `hsl(${hue},55%,42%)` : `hsl(${hue},72%,64%)`;
-      btn.classList.remove('hidden');
-      btn.innerHTML = `<span class="arrow" style="color:${col}">${arrow}</span>
-        <span class="rm" style="color:${col}">${e.roman}</span>
-        <span class="nm">${e.name}</span>`;
-      btn.title = (filtering ? '切换到 ' : '滚动到 ') + e.roman + ' ' + e.name;
-      btn.onclick = () => {
-        if (filtering) { S.eraFilter = new Set([e.id]); rebuild(); fit(); }
-        else {
-          const c = S.L.cols.find(x => x.era.id === e.id);
-          if (c) panToX(c.x + c.w / 2);
-          paintEraNav();
-        }
-      };
     });
   }
 

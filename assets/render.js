@@ -24,16 +24,11 @@ TT.render = (function () {
     return out + '…';
   }
 
-  /* 卡片外形：主题 A 用切角六边形轮廓，主题 B 用圆角矩形 */
-  function shapePath(x, y, w, h, hex) {
-    if (!hex) { const r = 7; return roundRect(x, y, w, h, r); }
+  /* 卡片外形：左上、右下切角的六边形。两套主题统一用它 ——
+   * 这个形状是科技树的识别符号，不该因为换主题就退化成普通圆角矩形。 */
+  function shapePath(x, y, w, h) {
     const c = Math.min(13, h / 3);
     return `M${x + c},${y} L${x + w},${y} L${x + w},${y + h - c} L${x + w - c},${y + h} L${x},${y + h} L${x},${y + c} Z`;
-  }
-  function roundRect(x, y, w, h, r) {
-    return `M${x + r},${y} H${x + w - r} A${r},${r} 0 0 1 ${x + w},${y + r} V${y + h - r}` +
-           ` A${r},${r} 0 0 1 ${x + w - r},${y + h} H${x + r} A${r},${r} 0 0 1 ${x},${y + h - r}` +
-           ` V${y + r} A${r},${r} 0 0 1 ${x + r},${y} Z`;
   }
 
   const hsl = (h, s, l, a) => `hsla(${h},${s}%,${l}%,${a})`;
@@ -133,7 +128,6 @@ TT.render = (function () {
   /* ---------------- 主绘制 ---------------- */
   function draw(svg, L, st) {
     const m = TT.model, tx = m.tx;
-    const hex = st.theme === 'A';
     const parts = [];
 
     /* --- defs --- */
@@ -251,7 +245,7 @@ TT.render = (function () {
       const titleSize = u.kind === 'domain' ? 14.5 : u.kind === 'cap' ? 13 : 12.5;
       const g = [];
 
-      g.push(`<path class="shape" d="${shapePath(u.x, u.y, u.w, u.h, hex)}"` +
+      g.push(`<path class="shape" d="${shapePath(u.x, u.y, u.w, u.h)}"` +
         ` fill="${color}22" stroke="${color}" style="color:${color}"/>`);
 
       const padX = 12;
@@ -260,10 +254,24 @@ TT.render = (function () {
        * 否则同一个领域在五个时代里会显示五个一模一样的标题。 */
       const heading = isTech ? u.ref.name : (u._milestone || u.ref.name);
       g.push(`<text class="title" x="${u.x + padX}" y="${ty}" font-size="${titleSize}">` +
-        `${esc(fit(heading, u.w - padX * 2 - (isTech ? 16 : 32), titleSize))}</text>`);
+        `${esc(fit(heading, u.w - padX - (isTech ? 46 : 42), titleSize))}</text>`);
 
       if (isTech) {
         const n = u.ref;
+        /* 技术节点也有环：基准视图下画成熟度（5 档按比例），单位视图下画建设状态。
+         * 这样任何粒度下"环"的语义一致，扫一眼就知道深浅。 */
+        const R = 13, cx = u.x + u.w - R - 11, cy2 = u.y + u.h / 2, C = 2 * Math.PI * R;
+        const mat = m.maturityById.get(n.maturity);
+        const ratio = st.orgId === 'benchmark'
+          ? (mat?.order || 0) / 5
+          : (m.statusById.get(n._status || 'unknown')?.weight ?? 0);
+        g.push(`<circle class="ring-bg" cx="${cx}" cy="${cy2}" r="${R}"/>`);
+        g.push(`<circle class="ring-fg" cx="${cx}" cy="${cy2}" r="${R}" stroke="${color}"` +
+          ` stroke-dasharray="${(C * ratio).toFixed(1)} ${C.toFixed(1)}"` +
+          ` style="transform-origin:${cx}px ${cy2}px"/>`);
+        if (st.orgId !== 'benchmark')
+          g.push(`<text class="cnt" x="${cx}" y="${cy2 + 3.6}" text-anchor="middle" font-size="9.5">${Math.round(ratio * 100)}</text>`);
+
         const bits = [];
         if (st.orgId === 'benchmark') {
           bits.push(m.maturityById.get(n.maturity)?.name || '');
@@ -272,12 +280,11 @@ TT.render = (function () {
           bits.push(m.statusById.get(n._status || 'unknown')?.name || '');
           if (n.owner) bits.push(n.owner);
         }
-        g.push(`<text class="meta" x="${u.x + padX}" y="${u.y + u.h - 12}">${esc(fit(bits.filter(Boolean).join(' · '), u.w - padX * 2 - 14, 10))}</text>`);
-        if (n._awards.length) g.push(`<text class="award" x="${u.x + u.w - 17}" y="${u.y + u.h - 11}">🏆</text>`);
-        if (n.frontier || n.maturity === 'experimental')
-          g.push(`<circle class="pulse" cx="${u.x + u.w - 11}" cy="${u.y + 11}" r="4" fill="${color}"/>`);
+        const avail = u.w - padX - R * 2 - 20;
+        g.push(`<text class="meta" x="${u.x + padX}" y="${u.y + u.h - 12}">${esc(fit(bits.filter(Boolean).join(' · '), avail, 10))}</text>`);
+        if (n._awards.length) g.push(`<text class="award" x="${u.x + u.w - R * 2 - 24}" y="${u.y + u.h - 11}">🏆</text>`);
         if (n._status === 'building')
-          g.push(`<path class="building-ring" d="${shapePath(u.x - 3, u.y - 3, u.w + 6, u.h + 6, hex)}"/>`);
+          g.push(`<path class="building-ring" d="${shapePath(u.x - 3, u.y - 3, u.w + 6, u.h + 6)}"/>`);
       } else {
         /* 自由布局下的聚合节点：进度环 + 子节点统计 */
         const prog = st.orgId === 'benchmark' ? m.maturityOf(u.techs) : m.progressOf(u.techs);
@@ -310,9 +317,9 @@ TT.render = (function () {
         : (dead * 2 < u.techs.length ? 'active'
           : u.techs.some(t => t.lifecycle === 'sunset') ? 'sunset' : 'legacy');
       if (lc !== 'active') {
-        g.push(`<path d="${shapePath(u.x, u.y, u.w, u.h, hex)}" fill="url(#hatch)"
+        g.push(`<path d="${shapePath(u.x, u.y, u.w, u.h)}" fill="url(#hatch)"
           opacity="${isTech ? 1 : .55}" pointer-events="none"/>`);
-        if (isTech) g.push(`<text class="badge-txt" x="${u.x + u.w - 8}" y="${u.y + 13}" text-anchor="end"
+        if (isTech) g.push(`<text class="badge-txt" x="${u.x + u.w - 40}" y="${u.y + 13}" text-anchor="end"
           fill="${lc === 'sunset' ? '#f87171' : '#94a3b8'}">${lc === 'sunset' ? '退役 ↓' : '存量'}</text>`);
       }
 

@@ -232,8 +232,6 @@ input.search { width: 150px; }
 .node .spanband { fill: var(--accent-2); opacity: .05; }
 .node .badge-txt { font-size: 9.5px; pointer-events: none; }
 
-@keyframes pulse { 0%,100% { opacity: .30; r: 4; } 50% { opacity: .95; r: 6.5; } }
-.pulse { animation: pulse 2.4s ease-in-out infinite; }
 @keyframes dashmove { to { stroke-dashoffset: -22; } }
 .node .building-ring {
   fill: none; stroke: #fbbf24; stroke-width: 1.6;
@@ -484,28 +482,22 @@ body.presenting #presenter { display: block; }
 }
 .edge.bidir:hover { opacity: 1; filter: drop-shadow(0 0 5px var(--accent-2)); }
 
-/* 时代导航：贴在画布左右边缘，平时若隐若现，鼠标靠近才显形 */
-.era-nav {
-  position: absolute; top: 50%; transform: translateY(-50%);
-  z-index: 13; width: 46px; padding: 14px 0;
-  background: var(--panel); border: 1px solid var(--border);
-  border-radius: 10px; color: var(--text-dim); cursor: pointer;
-  opacity: .18; transition: opacity .22s, transform .22s, border-color .22s;
-  backdrop-filter: blur(8px); display: flex; flex-direction: column;
-  align-items: center; gap: 5px; line-height: 1.2;
+/* 双向依赖：两个聚合格在同一时代互为前置。这是真实的业务事实，
+   显式画出来而不是藏起来；下钻到技术层它会自然消失（技术层是严格 DAG）。 */
+.edge.bidir {
+  stroke: var(--accent-2); stroke-width: 2; fill: none;
+  stroke-dasharray: none; opacity: .85;
 }
-.era-nav:hover { opacity: 1; border-color: var(--accent); color: var(--text); }
-.era-nav.hidden { display: none; }
-#eraPrev { left: 84px; }
-#eraNext { right: 56px; }
-#eraPrev:hover { transform: translateY(-50%) translateX(-3px); }
-#eraNext:hover { transform: translateY(-50%) translateX(3px); }
-.era-nav .arrow { font-size: 17px; line-height: 1; }
-.era-nav .rm { font-size: 14px; font-weight: 700; }
-.era-nav .nm {
-  font-size: 11px; writing-mode: vertical-rl; letter-spacing: 2px;
-  max-height: 108px; overflow: hidden;
-}
+.edge.bidir:hover { opacity: 1; filter: drop-shadow(0 0 5px var(--accent-2)); }
+
 /* 多点环路里被迫回折的那一条 */
 .edge.cyc { stroke: #f0a05a; stroke-width: 1.8; fill: none; opacity: .8; stroke-dasharray: 7 4; }
 .edge.cyc:hover { opacity: 1; }
+
+/* 单时代筛选时，相邻时代的标签保持半透明可点，作为「下一步去哪」的提示 */
+.era-chip.adjacent { opacity: .5; }
+.era-chip.adjacent:hover { opacity: 1; }
+.era-chip.adjacent.prev .nm::before { content: '‹ '; opacity: .7; }
+.era-chip.adjacent.next .nm::after  { content: ' ›'; opacity: .7; }
+.era-chip.on .rm { text-shadow: 0 0 12px currentColor; }
+.era-chip.dim { opacity: .22; }

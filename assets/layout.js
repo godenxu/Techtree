@@ -12,7 +12,7 @@ TT.layout = (function () {
   const SIZE = {
     domain: { w: 208, h: 66 },
     cap:    { w: 198, h: 62 },
-    tech:   { w: 182, h: 54 }
+    tech:   { w: 200, h: 56 }
   };
   const SUB_GAP = 16;      /* 子列间距 */
   const COL_PAD = 46;      /* 时代列左右留白 */

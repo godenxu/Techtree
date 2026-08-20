@@ -241,8 +241,6 @@ input.search { width: 150px; }
 .node .spanband { fill: var(--accent-2); opacity: .05; }
 .node .badge-txt { font-size: 9.5px; pointer-events: none; }
 
-@keyframes pulse { 0%,100% { opacity: .30; r: 4; } 50% { opacity: .95; r: 6.5; } }
-.pulse { animation: pulse 2.4s ease-in-out infinite; }
 @keyframes dashmove { to { stroke-dashoffset: -22; } }
 .node .building-ring {
   fill: none; stroke: #fbbf24; stroke-width: 1.6;
@@ -493,31 +491,25 @@ body.presenting #presenter { display: block; }
 }
 .edge.bidir:hover { opacity: 1; filter: drop-shadow(0 0 5px var(--accent-2)); }
 
-/* 时代导航：贴在画布左右边缘，平时若隐若现，鼠标靠近才显形 */
-.era-nav {
-  position: absolute; top: 50%; transform: translateY(-50%);
-  z-index: 13; width: 46px; padding: 14px 0;
-  background: var(--panel); border: 1px solid var(--border);
-  border-radius: 10px; color: var(--text-dim); cursor: pointer;
-  opacity: .18; transition: opacity .22s, transform .22s, border-color .22s;
-  backdrop-filter: blur(8px); display: flex; flex-direction: column;
-  align-items: center; gap: 5px; line-height: 1.2;
+/* 双向依赖：两个聚合格在同一时代互为前置。这是真实的业务事实，
+   显式画出来而不是藏起来；下钻到技术层它会自然消失（技术层是严格 DAG）。 */
+.edge.bidir {
+  stroke: var(--accent-2); stroke-width: 2; fill: none;
+  stroke-dasharray: none; opacity: .85;
 }
-.era-nav:hover { opacity: 1; border-color: var(--accent); color: var(--text); }
-.era-nav.hidden { display: none; }
-#eraPrev { left: 84px; }
-#eraNext { right: 56px; }
-#eraPrev:hover { transform: translateY(-50%) translateX(-3px); }
-#eraNext:hover { transform: translateY(-50%) translateX(3px); }
-.era-nav .arrow { font-size: 17px; line-height: 1; }
-.era-nav .rm { font-size: 14px; font-weight: 700; }
-.era-nav .nm {
-  font-size: 11px; writing-mode: vertical-rl; letter-spacing: 2px;
-  max-height: 108px; overflow: hidden;
-}
+.edge.bidir:hover { opacity: 1; filter: drop-shadow(0 0 5px var(--accent-2)); }
+
 /* 多点环路里被迫回折的那一条 */
 .edge.cyc { stroke: #f0a05a; stroke-width: 1.8; fill: none; opacity: .8; stroke-dasharray: 7 4; }
 .edge.cyc:hover { opacity: 1; }
+
+/* 单时代筛选时，相邻时代的标签保持半透明可点，作为「下一步去哪」的提示 */
+.era-chip.adjacent { opacity: .5; }
+.era-chip.adjacent:hover { opacity: 1; }
+.era-chip.adjacent.prev .nm::before { content: '‹ '; opacity: .7; }
+.era-chip.adjacent.next .nm::after  { content: ' ›'; opacity: .7; }
+.era-chip.on .rm { text-shadow: 0 0 12px currentColor; }
+.era-chip.dim { opacity: .22; }
 
 </style>
 </head>
@@ -591,10 +583,6 @@ body.presenting #presenter { display: block; }
     <div id="breadcrumb"></div>
 
     <div id="legend"></div>
-
-    <!-- 时代导航：左右边缘若隐若现，点一下直接去上/下一个时代 -->
-    <button class="era-nav" id="eraPrev" title="上一个时代"></button>
-    <button class="era-nav" id="eraNext" title="下一个时代"></button>
 
     <div id="zoomctl">
       <button class="btn" id="zIn" title="放大">＋</button>
@@ -2865,7 +2853,7 @@ TT.layout = (function () {
   const SIZE = {
     domain: { w: 208, h: 66 },
     cap:    { w: 198, h: 62 },
-    tech:   { w: 182, h: 54 }
+    tech:   { w: 200, h: 56 }
   };
   const SUB_GAP = 16;      /* 子列间距 */
   const COL_PAD = 46;      /* 时代列左右留白 */
@@ -3079,16 +3067,11 @@ TT.render = (function () {
     return out + '…';
   }
 
-  /* 卡片外形：主题 A 用切角六边形轮廓，主题 B 用圆角矩形 */
-  function shapePath(x, y, w, h, hex) {
-    if (!hex) { const r = 7; return roundRect(x, y, w, h, r); }
+  /* 卡片外形：左上、右下切角的六边形。两套主题统一用它 ——
+   * 这个形状是科技树的识别符号，不该因为换主题就退化成普通圆角矩形。 */
+  function shapePath(x, y, w, h) {
     const c = Math.min(13, h / 3);
     return `M${x + c},${y} L${x + w},${y} L${x + w},${y + h - c} L${x + w - c},${y + h} L${x},${y + h} L${x},${y + c} Z`;
-  }
-  function roundRect(x, y, w, h, r) {
-    return `M${x + r},${y} H${x + w - r} A${r},${r} 0 0 1 ${x + w},${y + r} V${y + h - r}` +
-           ` A${r},${r} 0 0 1 ${x + w - r},${y + h} H${x + r} A${r},${r} 0 0 1 ${x},${y + h - r}` +
-           ` V${y + r} A${r},${r} 0 0 1 ${x + r},${y} Z`;
   }
 
   const hsl = (h, s, l, a) => `hsla(${h},${s}%,${l}%,${a})`;
@@ -3188,7 +3171,6 @@ TT.render = (function () {
   /* ---------------- 主绘制 ---------------- */
   function draw(svg, L, st) {
     const m = TT.model, tx = m.tx;
-    const hex = st.theme === 'A';
     const parts = [];
 
     /* --- defs --- */
@@ -3306,7 +3288,7 @@ TT.render = (function () {
       const titleSize = u.kind === 'domain' ? 14.5 : u.kind === 'cap' ? 13 : 12.5;
       const g = [];
 
-      g.push(`<path class="shape" d="${shapePath(u.x, u.y, u.w, u.h, hex)}"` +
+      g.push(`<path class="shape" d="${shapePath(u.x, u.y, u.w, u.h)}"` +
         ` fill="${color}22" stroke="${color}" style="color:${color}"/>`);
 
       const padX = 12;
@@ -3315,10 +3297,24 @@ TT.render = (function () {
        * 否则同一个领域在五个时代里会显示五个一模一样的标题。 */
       const heading = isTech ? u.ref.name : (u._milestone || u.ref.name);
       g.push(`<text class="title" x="${u.x + padX}" y="${ty}" font-size="${titleSize}">` +
-        `${esc(fit(heading, u.w - padX * 2 - (isTech ? 16 : 32), titleSize))}</text>`);
+        `${esc(fit(heading, u.w - padX - (isTech ? 46 : 42), titleSize))}</text>`);
 
       if (isTech) {
         const n = u.ref;
+        /* 技术节点也有环：基准视图下画成熟度（5 档按比例），单位视图下画建设状态。
+         * 这样任何粒度下"环"的语义一致，扫一眼就知道深浅。 */
+        const R = 13, cx = u.x + u.w - R - 11, cy2 = u.y + u.h / 2, C = 2 * Math.PI * R;
+        const mat = m.maturityById.get(n.maturity);
+        const ratio = st.orgId === 'benchmark'
+          ? (mat?.order || 0) / 5
+          : (m.statusById.get(n._status || 'unknown')?.weight ?? 0);
+        g.push(`<circle class="ring-bg" cx="${cx}" cy="${cy2}" r="${R}"/>`);
+        g.push(`<circle class="ring-fg" cx="${cx}" cy="${cy2}" r="${R}" stroke="${color}"` +
+          ` stroke-dasharray="${(C * ratio).toFixed(1)} ${C.toFixed(1)}"` +
+          ` style="transform-origin:${cx}px ${cy2}px"/>`);
+        if (st.orgId !== 'benchmark')
+          g.push(`<text class="cnt" x="${cx}" y="${cy2 + 3.6}" text-anchor="middle" font-size="9.5">${Math.round(ratio * 100)}</text>`);
+
         const bits = [];
         if (st.orgId === 'benchmark') {
           bits.push(m.maturityById.get(n.maturity)?.name || '');
@@ -3327,12 +3323,11 @@ TT.render = (function () {
           bits.push(m.statusById.get(n._status || 'unknown')?.name || '');
           if (n.owner) bits.push(n.owner);
         }
-        g.push(`<text class="meta" x="${u.x + padX}" y="${u.y + u.h - 12}">${esc(fit(bits.filter(Boolean).join(' · '), u.w - padX * 2 - 14, 10))}</text>`);
-        if (n._awards.length) g.push(`<text class="award" x="${u.x + u.w - 17}" y="${u.y + u.h - 11}">🏆</text>`);
-        if (n.frontier || n.maturity === 'experimental')
-          g.push(`<circle class="pulse" cx="${u.x + u.w - 11}" cy="${u.y + 11}" r="4" fill="${color}"/>`);
+        const avail = u.w - padX - R * 2 - 20;
+        g.push(`<text class="meta" x="${u.x + padX}" y="${u.y + u.h - 12}">${esc(fit(bits.filter(Boolean).join(' · '), avail, 10))}</text>`);
+        if (n._awards.length) g.push(`<text class="award" x="${u.x + u.w - R * 2 - 24}" y="${u.y + u.h - 11}">🏆</text>`);
         if (n._status === 'building')
-          g.push(`<path class="building-ring" d="${shapePath(u.x - 3, u.y - 3, u.w + 6, u.h + 6, hex)}"/>`);
+          g.push(`<path class="building-ring" d="${shapePath(u.x - 3, u.y - 3, u.w + 6, u.h + 6)}"/>`);
       } else {
         /* 自由布局下的聚合节点：进度环 + 子节点统计 */
         const prog = st.orgId === 'benchmark' ? m.maturityOf(u.techs) : m.progressOf(u.techs);
@@ -3365,9 +3360,9 @@ TT.render = (function () {
         : (dead * 2 < u.techs.length ? 'active'
           : u.techs.some(t => t.lifecycle === 'sunset') ? 'sunset' : 'legacy');
       if (lc !== 'active') {
-        g.push(`<path d="${shapePath(u.x, u.y, u.w, u.h, hex)}" fill="url(#hatch)"
+        g.push(`<path d="${shapePath(u.x, u.y, u.w, u.h)}" fill="url(#hatch)"
           opacity="${isTech ? 1 : .55}" pointer-events="none"/>`);
-        if (isTech) g.push(`<text class="badge-txt" x="${u.x + u.w - 8}" y="${u.y + 13}" text-anchor="end"
+        if (isTech) g.push(`<text class="badge-txt" x="${u.x + u.w - 40}" y="${u.y + 13}" text-anchor="end"
           fill="${lc === 'sunset' ? '#f87171' : '#94a3b8'}">${lc === 'sunset' ? '退役 ↓' : '存量'}</text>`);
       }
 
@@ -4489,27 +4484,49 @@ ${body}
     const k = S.view.k, W = $('#stage').clientWidth, H = $('#stage').clientHeight;
     const eraBox = $('#eraBar'), laneBox = $('#laneBar');
 
-    eraBox.innerHTML = S.L.cols.map(c => {
-      const x0 = c.x * k + S.view.x, x1 = (c.x + c.w) * k + S.view.x;
-      if (x1 < 46 || x0 > W) return '';
-      /* 列被拖出屏幕一半时，标签贴边停住，始终能看到当前时代 */
-      const cx = Math.min(Math.max((x0 + x1) / 2, Math.max(x0, 64) + 46), Math.min(x1, W) - 46);
-      const hue = c.era.hue ?? 210;
+    /* 时代标签有两种排布：
+     *   无筛选 —— 跟着时代列走，标签就是列头
+     *   有筛选 —— 布局里只剩被选中的那一列，其余时代没有列可依附，
+     *             所以整条改成居中的步进器：当前高亮，相邻半透明可点，
+     *             一眼看到"上一个 / 下一个去哪"，也就不用在画布里另做导航按钮。 */
+    const eras = M().tx.eras;
+    const filtering = S.eraFilter.size === 1;
+    const curIdx = filtering ? eras.findIndex(e => S.eraFilter.has(e.id)) : -1;
+
+    const chip = (era, left, cls, tip) => {
+      const hue = era.hue ?? 210;
       const col = S.theme === 'B' ? `hsl(${hue},55%,42%)` : `hsl(${hue},72%,64%)`;
-      const eon = S.eraFilter.has(c.era.id);
-      const eoff = S.eraFilter.size && !eon;
-      return `<div class="era-chip ${eoff ? 'dim' : ''} ${eon ? 'on' : ''}" data-era="${c.era.id}"
-                   style="left:${cx}px" title="${eon ? '取消只看' : '只看'}${c.era.name}">
-        <div class="rm" style="color:${col}">${c.era.roman}</div>
-        <div class="nm">${c.era.name}</div>
-        <div class="pd">${c.era.period}</div>
+      return `<div class="era-chip ${cls}" data-era="${era.id}" style="left:${left}px" title="${tip}">
+        <div class="rm" style="color:${col}">${era.roman}</div>
+        <div class="nm">${era.name}</div>
+        <div class="pd">${era.period}</div>
         <div class="ul" style="background:${col}"></div>
       </div>`;
-    }).join('');
+    };
+
+    if (filtering) {
+      const step = Math.min(190, (W - 160) / eras.length);
+      const x0 = W / 2 - (eras.length - 1) * step / 2;
+      eraBox.innerHTML = eras.map((e, i) => {
+        const d = i - curIdx;
+        const cls = d === 0 ? 'on' : (Math.abs(d) === 1 ? 'adjacent ' + (d < 0 ? 'prev' : 'next') : 'dim');
+        const tip = d === 0 ? '取消只看 ' + e.name
+          : (Math.abs(d) === 1 ? (d < 0 ? '上一个时代：' : '下一个时代：') + e.name : '切换到 ' + e.name);
+        return chip(e, x0 + i * step, cls, tip);
+      }).join('');
+    } else {
+      eraBox.innerHTML = S.L.cols.map(c => {
+        const x0 = c.x * k + S.view.x, x1 = (c.x + c.w) * k + S.view.x;
+        if (x1 < 46 || x0 > W) return '';
+        const cx = Math.min(Math.max((x0 + x1) / 2, Math.max(x0, 64) + 46), Math.min(x1, W) - 46);
+        return chip(c.era, cx, '', '只看 ' + c.era.name);
+      }).join('');
+    }
+
+    /* 单选语义：点未选中的时代 = 直接切换过去；点已选中的 = 取消筛选 */
     eraBox.querySelectorAll('.era-chip').forEach(c => c.onclick = () => {
       const e = c.dataset.era;
-      S.eraFilter.has(e) ? S.eraFilter.delete(e) : S.eraFilter.add(e);
-      if (S.eraFilter.size === M().tx.eras.length) S.eraFilter.clear();
+      S.eraFilter = (S.eraFilter.size === 1 && S.eraFilter.has(e)) ? new Set() : new Set([e]);
       rebuild(); fit();
     });
 
@@ -4557,7 +4574,6 @@ ${body}
     }
     g.setAttribute('transform', `translate(${S.view.x},${S.view.y}) scale(${S.view.k})`);
     paintSticky();
-    paintEraNav();
   }
   /* 放开子列上限之后画布可能很宽（领域层约 5000px）。
    * 硬要一屏塞下就会把卡片缩到看不清字，所以分两种取景：
@@ -4635,54 +4651,6 @@ ${body}
       if (onUp) e.classList.add('up');
       else if (onDown) e.classList.add('down');
       else e.classList.add('faded');
-    });
-  }
-
-  /* ---------------- 时代导航 ----------------
-   * 单时代筛选下点它 = 直接换到相邻时代（不用先取消筛选再选）；
-   * 没有筛选时点它 = 把镜头平移到相邻时代那一列。 */
-  function currentEraIdx() {
-    if (!S.L) return 0;
-    if (S.eraFilter.size === 1) {
-      const only = [...S.eraFilter][0];
-      return M().tx.eras.findIndex(e => e.id === only);
-    }
-    /* 取视口中心最接近的那一列 */
-    const st = $('#stage');
-    const centerWorld = (st.clientWidth / 2 - S.view.x) / S.view.k;
-    let best = 0, bd = Infinity;
-    S.L.cols.forEach(c => {
-      const d = Math.abs(c.x + c.w / 2 - centerWorld);
-      if (d < bd) { bd = d; best = M().tx.eras.indexOf(c.era); }
-    });
-    return best;
-  }
-
-  function paintEraNav() {
-    const eras = M().tx.eras, i = currentEraIdx();
-    const filtering = S.eraFilter.size === 1;
-    [['#eraPrev', -1, '‹'], ['#eraNext', 1, '›']].forEach(([sel, dir, arrow]) => {
-      const btn = $(sel);
-      /* 筛选态下只在已有节点的时代之间跳；非筛选态按实际画出来的列跳 */
-      const pool = filtering ? eras.map((e, k) => k) : S.L.cols.map(c => eras.indexOf(c.era));
-      const cand = dir < 0 ? pool.filter(k => k < i).pop() : pool.filter(k => k > i).shift();
-      if (cand === undefined) { btn.classList.add('hidden'); return; }
-      const e = eras[cand];
-      const hue = e.hue ?? 210;
-      const col = S.theme === 'B' ? `hsl(${hue},55%,42%)` : `hsl(${hue},72%,64%)`;
-      btn.classList.remove('hidden');
-      btn.innerHTML = `<span class="arrow" style="color:${col}">${arrow}</span>
-        <span class="rm" style="color:${col}">${e.roman}</span>
-        <span class="nm">${e.name}</span>`;
-      btn.title = (filtering ? '切换到 ' : '滚动到 ') + e.roman + ' ' + e.name;
-      btn.onclick = () => {
-        if (filtering) { S.eraFilter = new Set([e.id]); rebuild(); fit(); }
-        else {
-          const c = S.L.cols.find(x => x.era.id === e.id);
-          if (c) panToX(c.x + c.w / 2);
-          paintEraNav();
-        }
-      };
     });
   }
 
