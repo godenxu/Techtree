@@ -91,6 +91,14 @@ TT.ui = (function () {
     sections.push(`<div class="dw-sec"><p>${esc(n.desc)}</p></div>`);
 
     if (n.pitfall) sections.push(`<div class="dw-sec"><div class="callout">⚠ ${esc(n.pitfall)}</div></div>`);
+    const lc = m.tx.lifecycle.find(l => l.id === (n.lifecycle || 'active'));
+    if (n.lifecycle && n.lifecycle !== 'active') {
+      const rep = (n.supersededBy || []).map(x => S.byId.get(x)).filter(Boolean);
+      sections.push(`<div class="dw-sec"><div class="callout" style="border-color:${lc.color};background:${lc.color}14;color:${lc.color}">
+        <b>${lc.name}</b> · ${esc(lc.desc)}<br>${esc(n.sunsetNote || '')}
+        ${rep.length ? `<div style="margin-top:6px">替代方向：${rep.map(r => `<span class="chip" data-go="${r.id}">${esc(r.name)}</span>`).join(' ')}</div>` : ''}
+      </div></div>`);
+    }
     if (gate.length) sections.push(`<div class="dw-sec"><div class="callout gate">🔒 合规闸门：本节点受安全架构约束，前置为 ${gate.map(g => esc(g.name)).join('、')}</div></div>`);
 
     /* 维护模式：编辑基准节点本身（任何视图下都可用，改的是 data/nodes.js 的内容） */
@@ -143,6 +151,7 @@ TT.ui = (function () {
 
     /* 行业判断 */
     sections.push(`<div class="dw-sec"><h3>行业判断</h3><dl class="kv">
+      <dt>生命周期</dt><dd style="color:${lc.color}">${lc.name}　<span style="color:var(--text-faint)">${lc.desc}</span></dd>
       <dt>技术成熟度</dt><dd>${m.maturityById.get(n.maturity)?.name || '—'}　<span style="color:var(--text-faint)">${m.maturityById.get(n.maturity)?.desc || ''}</span></dd>
       <dt>行业普及度</dt><dd>${m.adoptionById.get(n.adoption)?.name || '—'}</dd>
       <dt>自主可控</dt><dd>${m.autonomyById.get(n.autonomy)?.name || '—'}</dd>
@@ -310,13 +319,38 @@ TT.ui = (function () {
          <div style="color:var(--text-dim)">${esc(a.project)}</div></div>`).join('')}</div></div>`);
     }
 
+    /* 由底层技术边聚合出本格的前置与后继，缺了这两栏会让人误以为它没有前置 */
+    const inc = new Map(), outg = new Map();
+    S.nodes.forEach(n => (n.deps || []).forEach(d => {
+      const dn = S.byId.get(d); if (!dn) return;
+      const A = m.carrierOf(dn, S.expanded), B = m.carrierOf(n, S.expanded);
+      const self = unitId || ref.id;
+      if (B === self && A !== self) (inc.get(A) || inc.set(A, []).get(A)).push(`${dn.name} → ${n.name}`);
+      if (A === self && B !== self) (outg.get(B) || outg.set(B, []).get(B)).push(`${dn.name} → ${n.name}`);
+    }));
+    const unitName = uid => {
+      const { base, era } = m.splitUnitId(uid);
+      const e = m.tx.eras.find(x => x.id === era);
+      const r = m.capById.get(base) || m.domById.get(base) || S.byId.get(base);
+      return (r ? r.name : uid) + (e ? ` · ${e.roman}` : '');
+    };
+    const listBox = (map, empty) => map.size
+      ? `<div class="chips">${[...map].map(([uid, why]) =>
+          `<span class="chip" data-go="${uid}" title="${esc(why.slice(0, 4).join('\n'))}">${esc(unitName(uid))} <b>${why.length}</b></span>`).join('')}</div>`
+      : `<p style="color:var(--text-faint)">${empty}</p>`;
+
+    sec.push(`<div class="dw-sec"><h3>前置 ${inc.size}</h3>${listBox(inc, '无前置，是本条线的起点')}
+      <p style="color:var(--text-faint);font-size:11.5px;margin-top:6px">数字为底层技术依赖的条数，悬停可看具体是哪几条</p></div>`);
+    sec.push(`<div class="dw-sec"><h3>后继 ${outg.size}</h3>${listBox(outg, '暂无后继，该方向不再被依赖')}</div>`);
+
     sec.push(`<div class="dw-sec"><button class="btn sm" id="dwExpand">在图上展开本${kind === 'domain' ? '领域' : '能力'}</button></div>`);
 
     $('#dwBody').innerHTML = sec.join('');
     $('#dwBody').querySelectorAll('[data-go]').forEach(c => c.onclick = () => {
-      const t = S.byId.get(c.dataset.go);
+      const id = c.dataset.go;
+      const t = S.byId.get(M().splitUnitId(id).base);
       if (t) { S.expanded.add(t._domain); S.expanded.add(t.cap); TT.rebuild(); }
-      S.selected = c.dataset.go; openDrawer(c.dataset.go); api.applyHighlight(); api.centerOn(c.dataset.go, true);
+      S.selected = id; openDrawer(id); api.applyHighlight(); api.centerOn(id, true);
     });
     $('#dwBody').querySelectorAll('[data-open]').forEach(c => c.onclick = () => {
       S.expanded.add(ref.id); S.expanded.add(c.dataset.open);

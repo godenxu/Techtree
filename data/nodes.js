@@ -35,6 +35,7 @@ TT.nodes = [
     stack:['C/S 架构','交易前置'] },
 
   { id:'T1012', name:'ATM 与自助设备', en:'ATM & Self-service', cap:'C101', era:'E1', deps:['T1011'],
+    lifecycle:'legacy', supersededBy:['T1023'], sunsetNote:'交易量持续向移动端迁移，网点自助设备缩减',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'partial', tags:[],
     effort:{manMonth:200,months:12}, value:3, risk:2,
     desc:'自动柜员机、存取款一体机等自助渠道，把简单交易从柜面剥离。',
@@ -57,6 +58,7 @@ TT.nodes = [
     pitfall:'容易做成硬件堆砌，关键在与线上渠道的客户旅程打通' },
 
   { id:'T1021', name:'电话银行与呼叫中心', en:'Call Center', cap:'C102', era:'E2', deps:['T2011'],
+    lifecycle:'legacy', supersededBy:['T8032'], sunsetNote:'人工话务持续下降，向智能客服与在线渠道分流',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'partial', tags:[],
     effort:{manMonth:250,months:12}, value:3, risk:2,
     desc:'基于 IVR 与人工坐席的远程服务渠道，是后续智能客服的载体。',
@@ -64,6 +66,7 @@ TT.nodes = [
     stack:['CTI','IVR','录音质检'] },
 
   { id:'T1022', name:'网上银行', en:'Internet Banking', cap:'C102', era:'E2', deps:['T4012','T11013'],
+    lifecycle:'legacy', supersededBy:['T1023'], sunsetNote:'个人网银流量已被手机银行取代，企业网银仍在用',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'partial', tags:[],
     effort:{manMonth:400,months:15}, value:4, risk:3,
     desc:'面向个人与企业的 Web 端自助金融服务，银行第一个真正的线上渠道。',
@@ -124,6 +127,7 @@ TT.nodes = [
   /* ═══════════════ D02 产品与交易能力 ═══════════════ */
 
   { id:'T2011', name:'集中式核心银行系统', en:'Centralized Core Banking', cap:'C201', era:'E1', deps:['T9011'],
+    lifecycle:'sunset', supersededBy:['T4021'], sunsetNote:'账务核心正被分布式核心替代，新建投入应转向 T4021',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'dependent', tags:['xinchuang'],
     effort:{manMonth:3000,months:36}, value:5, risk:5,
     desc:'账务处理的心脏，承载存贷汇的记账与产品定义，通常运行在主机之上。',
@@ -139,6 +143,7 @@ TT.nodes = [
     stack:['总账系统','科目体系'] },
 
   { id:'T2012', name:'综合前置与渠道整合层', en:'Front-end Integration', cap:'C201', era:'E2', deps:['T2011'],
+    lifecycle:'sunset', supersededBy:['T3011', 'T4015'], sunsetNote:'综合前置的职责被 API 网关与微服务分解',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'partial', tags:[],
     effort:{manMonth:400,months:15}, value:3, risk:3,
     desc:'隔离渠道与核心的交易前置层，负责协议转换、流量控制与交易路由。',
@@ -299,6 +304,7 @@ TT.nodes = [
   /* ═══════════════ D04 核心系统与应用架构 ═══════════════ */
 
   { id:'T4011', name:'主机批处理与集中式架构', en:'Mainframe Batch', cap:'C401', era:'E1', deps:['T9011'],
+    lifecycle:'sunset', supersededBy:['T4023'], sunsetNote:'主机批处理随核心下移工程逐步退出',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'dependent', tags:['xinchuang'],
     effort:{manMonth:800,months:24}, value:4, risk:3,
     desc:'以日终批处理为节奏的主机应用架构，稳定但难以支撑实时与弹性需求。',
@@ -306,6 +312,7 @@ TT.nodes = [
     stack:['z/OS','JCL','COBOL'] },
 
   { id:'T4012', name:'三层架构与应用中间件', en:'Three-tier Architecture', cap:'C401', era:'E2', deps:['T4011','T9012'],
+    lifecycle:'legacy', supersededBy:['T4015'], sunsetNote:'三层架构应用逐步微服务化改造',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'partial', tags:['xinchuang'],
     effort:{manMonth:500,months:18}, value:3, risk:3,
     desc:'表示层、应用层、数据层分离，开放平台应用的标准形态。',
@@ -313,6 +320,7 @@ TT.nodes = [
     stack:['WebLogic / WebSphere','Tomcat','Java EE'] },
 
   { id:'T4013', name:'ESB 企业服务总线', en:'Enterprise Service Bus', cap:'C401', era:'E2', deps:['T4012'],
+    lifecycle:'sunset', supersededBy:['T4015', 'T3011'], sunsetNote:'集中式总线被微服务治理与 API 网关取代',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'partial', tags:[],
     effort:{manMonth:400,months:15}, value:3, risk:3,
     desc:'集中式的服务集成中枢，解决系统间点对点接口爆炸问题。',
@@ -321,6 +329,7 @@ TT.nodes = [
     pitfall:'集中式总线本身会成为性能与变更瓶颈，是后续微服务化的动因' },
 
   { id:'T4014', name:'SOA 服务化与接口标准', en:'SOA', cap:'C401', era:'E3', deps:['T4013'],
+    lifecycle:'legacy', supersededBy:['T4015'], sunsetNote:'SOA 粗粒度服务向微服务细化',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'partial', tags:[],
     effort:{manMonth:600,months:20}, value:4, risk:3,
     desc:'按业务能力拆分粗粒度服务并建立企业级接口规范与服务目录。',
@@ -453,6 +462,7 @@ TT.nodes = [
     stack:['用例生成','智能缺陷定位'] },
 
   { id:'T5031', name:'集中监控与运维管理', en:'Centralized Monitoring', cap:'C503', era:'E2', deps:['T9012'],
+    lifecycle:'legacy', supersededBy:['T5032'], sunsetNote:'传统网管监控无法定位微服务问题，向可观测性演进',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'partial', tags:[],
     effort:{manMonth:300,months:12}, value:3, risk:2,
     desc:'主机、网络、中间件的集中监控告警与运维流程管理。',
@@ -493,6 +503,7 @@ TT.nodes = [
   /* ═══════════════ D06 数据基础与治理 ═══════════════ */
 
   { id:'T6011', name:'生产报表与直连查询', en:'Production Reporting', cap:'C601', era:'E1', deps:['T9011'],
+    lifecycle:'sunset', supersededBy:['T6013'], sunsetNote:'直连生产库取数早已被数据仓库取代，仍存在即是技术债',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'partial', tags:[],
     effort:{manMonth:120,months:6}, value:2, risk:2,
     desc:'直接从生产库取数出报表的原始形态，数据分析的史前阶段。',
@@ -501,6 +512,7 @@ TT.nodes = [
     pitfall:'查询直接压生产库，是后续建设 ODS 的直接动因' },
 
   { id:'T6012', name:'ODS 操作型数据存储', en:'Operational Data Store', cap:'C601', era:'E2', deps:['T6011'],
+    lifecycle:'legacy', supersededBy:['T6015', 'T6033'], sunsetNote:'ODS 的整合职责被数据湖与实时数仓接管',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'partial', tags:[],
     effort:{manMonth:300,months:12}, value:3, risk:3,
     desc:'把生产数据准实时抽取到独立库，分析查询与生产交易解耦。',
@@ -806,6 +818,7 @@ TT.nodes = [
   /* ═══════════════ D09 基础设施与云 ═══════════════ */
 
   { id:'T9011', name:'主机与核心机房', en:'Mainframe & Data Center', cap:'C901', era:'E1', deps:[],
+    lifecycle:'legacy', supersededBy:['T9022', 'T9026'], sunsetNote:'主机部分随核心下移退出；机房基础设施本身持续演进',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'dependent', tags:['xinchuang'],
     effort:{manMonth:400,months:24}, value:5, risk:3,
     desc:'全行 IT 的物理起点：机房、主机与集中式算力，一切节点的最终地基。',
@@ -820,6 +833,7 @@ TT.nodes = [
     stack:['专线','MPLS','广域网优化'] },
 
   { id:'T9013', name:'集中式存储与备份', en:'Centralized Storage & Backup', cap:'C901', era:'E1', deps:['T9011'],
+    lifecycle:'legacy', supersededBy:['T9026'], sunsetNote:'集中式存储阵列逐步让位给分布式存储',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'dependent', tags:['xinchuang'],
     effort:{manMonth:250,months:12}, value:4, risk:3,
     desc:'集中式存储阵列与备份体系，数据可靠性的第一道保障。',
@@ -827,6 +841,7 @@ TT.nodes = [
     stack:['SAN 存储','磁带库','备份软件'] },
 
   { id:'T9021', name:'服务器虚拟化', en:'Server Virtualization', cap:'C902', era:'E3', deps:['T9013','T9012'],
+    lifecycle:'legacy', supersededBy:['T9023'], sunsetNote:'虚拟机仍在跑，新增负载优先容器化',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'partial', tags:['xinchuang'],
     effort:{manMonth:250,months:12}, value:4, risk:2,
     desc:'把物理服务器抽象为虚拟机池，资源交付从周降到小时。',
@@ -1201,6 +1216,7 @@ TT.nodes = [
     pitfall:'AI 训练对存储吞吐的要求远高于传统业务，选型时要按训练场景压测' },
 
   { id:'T11016', name:'集中账号与授权管理', en:'Centralized Account Management', cap:'C1101', era:'E3', deps:['T11011'],
+    lifecycle:'legacy', supersededBy:['T11012'], sunsetNote:'集中账号台账被 IAM / 4A 平台吸收',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'partial', tags:[],
     effort:{manMonth:280,months:14}, value:4, risk:3,
     desc:'把散落在各系统的账号与权限收口到统一台账，是 IAM / 4A 的前置阶段。',

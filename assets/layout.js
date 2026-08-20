@@ -68,8 +68,72 @@ TT.layout = (function () {
     return depth;
   }
 
+  /* ───────────── 矩阵布局（聚合视图专用）─────────────
+   * 一个领域 / 能力占一整行，横跨它有技术的所有时代，用一条带连起来；
+   * 名称只在左侧冻结列出现一次，格子里只放数量与完成度。
+   * 这样就不会出现「同一个领域在图上冒出来好几次」的困惑。 */
+  const MX = { cellW: 172, cellH: 46, rowGap: 9, colPad: 22, leftW: 228, labelX: 78 };
+
+  function computeMatrix(units, nodes, h) {
+    const m = M(), tx = m.tx;
+
+    const eraUsed = tx.eras.filter(e => units.some(u => u.era === e.id));
+    const colIdx = new Map(eraUsed.map((e, i) => [e.id, i]));
+    const colW = MX.cellW + MX.colPad * 2;
+    const cols = eraUsed.map((e, i) => ({ era: e, i, subs: 1, x: MX.leftW + i * colW, w: colW }));
+    const width = MX.leftW + eraUsed.length * colW + 16;
+
+    /* 行的顺序：先按泳道，再按分类体系里的既有顺序 */
+    const order = [];
+    tx.domains.forEach(d => {
+      if (units.some(u => u.base === d.id)) order.push({ base: d.id, kind: 'domain', ref: d, arch: d.arch });
+      tx.capabilities.filter(c => c.domain === d.id).forEach(c => {
+        if (units.some(u => u.base === c.id)) order.push({ base: c.id, kind: 'cap', ref: c, arch: d.arch });
+      });
+    });
+
+    const lanes = tx.arch.filter(a => order.some(r => r.arch === a.id))
+      .map(a => ({ ...a })).sort((a, b) => a.lane - b.lane);
+    const rowH = MX.cellH + MX.rowGap;
+    let y = HEAD_H;
+    lanes.forEach(l => {
+      const rows = order.filter(r => r.arch === l.id);
+      l.h = Math.max(rows.length * rowH, rowH) + LANE_PAD * 2;
+      l.y = y; y += l.h;
+      rows.forEach((r, i) => { r.lane = l.lane; r.y = l.y + LANE_PAD + i * rowH; r.h = MX.cellH; });
+    });
+    const height = y + 24;
+
+    const placed = units.map(u => {
+      const row = order.find(r => r.base === u.base);
+      const c = cols[colIdx.get(u.era)];
+      const x = c.x + MX.colPad;
+      return {
+        ...u, kind: u.kind, lane: row.lane, arch: row.arch, row: row.base,
+        techs: m.descendants(u.id, nodes, h),
+        w: MX.cellW, h: MX.cellH, col: colIdx.get(u.era),
+        x, y: row.y, cx: x + MX.cellW / 2, cy: row.y + MX.cellH / 2
+      };
+    });
+
+    /* 每行的带：从该行最左的格子延伸到最右 */
+    order.forEach(r => {
+      const mine = placed.filter(p => p.row === r.base);
+      r.x0 = Math.min(...mine.map(p => p.x));
+      r.x1 = Math.max(...mine.map(p => p.x + p.w));
+      r.count = mine.reduce((s, p) => s + p.techs.length, 0);
+    });
+
+    return { units: placed, lanes, cols, rows: order, width, height,
+             LEFT_W: MX.leftW, LABEL_X: MX.labelX, HEAD_H, matrix: true };
+  }
+
   function compute(units, nodes, h, edges) {
     const m = M(), tx = m.tx;
+
+    /* 全是聚合单元时走矩阵布局；一旦混入技术节点就回到自由 DAG 布局，
+     * 因为技术层按行铺会变成一张极高极窄的图，反而看不清。 */
+    if (units.length && units.every(u => u.kind !== 'tech')) return computeMatrix(units, nodes, h);
 
     /* --- 归位：每个单元的时代列与泳道 --- */
     const placed = units.map(u => {
@@ -179,7 +243,7 @@ TT.layout = (function () {
       });
     });
 
-    return { units: placed, lanes, cols, width, height, LEFT_W, HEAD_H };
+    return { units: placed, lanes, cols, width, height, LEFT_W, HEAD_H, matrix: false };
   }
 
   /* 依赖连线：左出右进的三次贝塞尔；逆向或同列时从下方绕行 */

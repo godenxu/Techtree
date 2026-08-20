@@ -92,6 +92,12 @@ TT.render = (function () {
         : (techs.length ? techs.reduce((s, t) => s + (t.value || 3), 0) / techs.length : 3);
       return v >= 4.6 ? '#f5c451' : v >= 4 ? '#fbbf24' : v >= 3.2 ? '#60a5fa' : '#64748b';
     }
+    if (mode === 'lifecycle') {
+      if (u.kind === 'tech') return (m.tx.lifecycle.find(l => l.id === (u.ref.lifecycle || 'active')) || {}).color;
+      const bad = techs.filter(t => t.lifecycle && t.lifecycle !== 'active').length;
+      const r = techs.length ? bad / techs.length : 0;
+      return r >= .5 ? '#f87171' : r > 0 ? '#94a3b8' : '#4ade80';
+    }
     if (mode === 'award') {
       const n = techs.reduce((s, t) => s + (t._awards?.length || 0), 0);
       return n >= 4 ? '#f5c451' : n >= 2 ? '#d9a441' : n >= 1 ? '#8a7a4a' : '#4a5568';
@@ -118,10 +124,14 @@ TT.render = (function () {
     const parts = [];
 
     /* --- defs --- */
+    const hatchCol = st.theme === 'B' ? 'rgba(30,45,70,.30)' : 'rgba(220,232,250,.26)';
     parts.push(`<defs>
       <marker id="arw" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
         <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
       </marker>
+      <pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        <line x1="0" y1="0" x2="0" y2="7" stroke="${hatchCol}" stroke-width="2.2"/>
+      </pattern>
     </defs>`);
 
     /* --- 背景：泳道走色相，时代走明度 + 彩虹色带 ---
@@ -130,47 +140,66 @@ TT.render = (function () {
     const light = st.theme === 'B';
     /* 五条泳道一视同仁：安全架构不再用更重的底色特殊突出，
      * 它的横切性质由「贯穿」标签和位置表达，不靠颜色喊。 */
-    const laneTint = hue => light ? `hsla(${hue},60%,45%,.115)` : `hsla(${hue},70%,55%,.115)`;
+    /* 泳道只留很淡的底色，身份主要靠左侧色条和冻结列的色标表达；
+     * 时代是主背景层，明度差拉开，画在泳道之上才不会被盖住。 */
+    const laneTint = hue => light ? `hsla(${hue},58%,46%,.045)` : `hsla(${hue},68%,58%,.045)`;
     const laneBar  = hue => light ? `hsl(${hue},58%,44%)` : `hsl(${hue},70%,60%)`;
-    /* 时代明度递进：暗色主题越往后越亮，亮色主题越往后越深 */
     const eraTint = i => {
       const t = tx.eras.length > 1 ? i / (tx.eras.length - 1) : 0;
-      return light ? `rgba(24,48,84,${(0.030 + t * 0.055).toFixed(3)})`
-                   : `rgba(198,222,255,${(0.026 + t * 0.050).toFixed(3)})`;
+      return light ? `rgba(22,44,80,${(0.022 + t * 0.072).toFixed(3)})`
+                   : `rgba(200,224,255,${(0.018 + t * 0.068).toFixed(3)})`;
     };
     const eraBar = hue => light ? `hsl(${hue},55%,46%)` : `hsl(${hue},72%,64%)`;
 
     const bg = [];
-
-    /* 时代列：底色明度递进 + 顶部彩虹色带 + 罗马数字水印 */
     const bodyTop = L.HEAD_H, bodyH = L.height - L.HEAD_H;
-    L.cols.forEach((c, i) => {
-      bg.push(`<rect x="${c.x}" y="${bodyTop}" width="${c.w}" height="${bodyH}" fill="${eraTint(c.era ? tx.eras.indexOf(c.era) : i)}"/>`);
-      const hue = c.era.hue ?? 210;
-      const cx = c.x + c.w / 2;
-      bg.push(`<text x="${cx}" y="${L.height - 26}" text-anchor="middle" font-size="150" font-weight="700"
-        fill="${eraBar(hue)}" opacity="${light ? .035 : .04}" pointer-events="none">${c.era.roman}</text>`);
-      bg.push(`<rect x="${c.x + 8}" y="${bodyTop - 8}" width="${c.w - 16}" height="4" rx="2" fill="${eraBar(hue)}" opacity=".72"/>`);
-      bg.push(`<line x1="${c.x}" y1="${bodyTop - 8}" x2="${c.x}" y2="${L.height}" stroke="${eraBar(hue)}" stroke-opacity="${light ? .20 : .24}" stroke-width="1"/>`);
 
+    /* ① 泳道底色与左侧色条（很淡，只做归属提示） */
+    L.lanes.forEach(l => {
+      bg.push(`<rect x="0" y="${l.y}" width="${L.width}" height="${l.h}" fill="${laneTint(l.hue)}"/>`);
+      bg.push(`<rect x="0" y="${l.y + 3}" width="6" height="${l.h - 6}" rx="3" fill="${laneBar(l.hue)}" opacity=".9"/>`);
+    });
+
+    /* ② 时代列：主背景层，画在泳道之上 */
+    L.cols.forEach(c => {
+      const i = tx.eras.indexOf(c.era), hue = c.era.hue ?? 210, cx = c.x + c.w / 2;
+      bg.push(`<rect x="${c.x}" y="${bodyTop}" width="${c.w}" height="${bodyH}" fill="${eraTint(i)}"/>`);
+      bg.push(`<text x="${cx}" y="${L.height - 22}" text-anchor="middle" font-size="150" font-weight="700"
+        fill="${eraBar(hue)}" opacity="${light ? .05 : .055}" pointer-events="none">${c.era.roman}</text>`);
+      bg.push(`<rect x="${c.x + 8}" y="${bodyTop - 8}" width="${c.w - 16}" height="4" rx="2" fill="${eraBar(hue)}" opacity=".8"/>`);
+      bg.push(`<line x1="${c.x}" y1="${bodyTop - 8}" x2="${c.x}" y2="${L.height}" stroke="${eraBar(hue)}" stroke-opacity="${light ? .22 : .26}" stroke-width="1"/>`);
     });
     bg.push(`<line x1="${L.width}" y1="${bodyTop - 8}" x2="${L.width}" y2="${L.height}" stroke="var(--grid)" stroke-width="1"/>`);
 
-    /* 泳道：色相底色 + 左侧彩色轨道条 + 带色标签 */
-    L.lanes.forEach(l => {
-      bg.push(`<rect x="0" y="${l.y}" width="${L.width}" height="${l.h}" fill="${laneTint(l.hue)}"/>`);
-      bg.push(`<line class="lane-line" x1="0" y1="${l.y}" x2="${L.width}" y2="${l.y}"/>`);
-      bg.push(`<rect x="0" y="${l.y + 3}" width="6" height="${l.h - 6}" rx="3" fill="${laneBar(l.hue)}" opacity=".9"/>`);
-    });
-    const last = L.lanes.at(-1);
-    bg.push(`<line class="lane-line" x1="0" y1="${last.y + last.h}" x2="${L.width}" y2="${last.y + last.h}"/>`);
+    /* ③ 泳道分隔线画在最上层，保证行的边界清楚 */
+    L.lanes.forEach(l => bg.push(`<line class="lane-line" x1="0" y1="${l.y}" x2="${L.width}" y2="${l.y}"/>`));
+    const lastLane = L.lanes.at(-1);
+    bg.push(`<line class="lane-line" x1="0" y1="${lastLane.y + lastLane.h}" x2="${L.width}" y2="${lastLane.y + lastLane.h}"/>`);
+
+    /* ④ 矩阵视图：每行一条横跨时代的带 + 左侧行名（行名画进 SVG，导出 PNG 才带得上） */
+    if (L.matrix) {
+      L.rows.forEach(r => {
+        const laneR = L.lanes.find(l => l.lane === r.lane);
+        bg.push(`<text class="row-label" x="${L.LABEL_X}" y="${r.y + r.h / 2 - 3}">` +
+          `${esc(fit(r.ref.name, L.LEFT_W - L.LABEL_X - 12, 12))}</text>`);
+        bg.push(`<text class="row-sub" x="${L.LABEL_X}" y="${r.y + r.h / 2 + 11}">` +
+          `全时代共 ${r.count} 项</text>`);
+        const col = laneBar(laneR.hue);
+        bg.push(`<rect x="${r.x0 - 12}" y="${r.y - 5}" width="${r.x1 - r.x0 + 24}" height="${r.h + 10}"
+          rx="${(r.h + 10) / 2}" fill="${col}" opacity="${light ? .10 : .085}"/>`);
+        bg.push(`<rect x="${r.x0 - 12}" y="${r.y - 5}" width="${r.x1 - r.x0 + 24}" height="${r.h + 10}"
+          rx="${(r.h + 10) / 2}" fill="none" stroke="${col}" stroke-opacity=".45" stroke-width="1"/>`);
+        bg.push(`<line x1="${r.x0}" y1="${r.y + r.h / 2}" x2="${r.x1}" y2="${r.y + r.h / 2}"
+          stroke="${col}" stroke-opacity=".34" stroke-width="1.4" stroke-dasharray="2 4"/>`);
+      });
+    }
 
     parts.push(`<g class="bg">${bg.join('')}</g>`);
 
     /* --- 跨 5A 宽卡片的背景带（如「人工智能与大模型」领域） --- */
     const spans = [];
     const spanGroups = new Map();
-    L.units.forEach(u => {
+    if (!L.matrix) L.units.forEach(u => {
       if (u.kind === 'domain' && u.ref.spanArch?.length) {
         const g = spanGroups.get(u.base) || { x0: Infinity, x1: -Infinity };
         g.x0 = Math.min(g.x0, u.x); g.x1 = Math.max(g.x1, u.x + u.w);
@@ -215,8 +244,10 @@ TT.render = (function () {
 
       const padX = 12;
       let ty = u.y + (isTech ? 21 : 22);
-      const name = u.kind === 'tech' ? u.ref.name : u.ref.name;
-      g.push(`<text class="title" x="${u.x + padX}" y="${ty}" font-size="${titleSize}">${esc(fit(name, u.w - padX * 2 - (isTech ? 16 : 34), titleSize))}</text>`);
+      if (isTech || !L.matrix) {
+        g.push(`<text class="title" x="${u.x + padX}" y="${ty}" font-size="${titleSize}">` +
+          `${esc(fit(u.ref.name, u.w - padX * 2 - (isTech ? 16 : 34), titleSize))}</text>`);
+      }
 
       if (isTech) {
         const n = u.ref;
@@ -234,8 +265,26 @@ TT.render = (function () {
           g.push(`<circle class="pulse" cx="${u.x + u.w - 11}" cy="${u.y + 11}" r="4" fill="${color}"/>`);
         if (n._status === 'building')
           g.push(`<path class="building-ring" d="${shapePath(u.x - 3, u.y - 3, u.w + 6, u.h + 6, hex)}"/>`);
+      } else if (L.matrix) {
+        /* 矩阵格：名称已经在行名里，格子里只放数量与完成度 */
+        const prog = st.orgId === 'benchmark' ? m.maturityOf(u.techs) : m.progressOf(u.techs);
+        const R = 14, cx = u.x + u.w - R - 12, cy2 = u.y + u.h / 2, C = 2 * Math.PI * R;
+        g.push(`<circle class="ring-bg" cx="${cx}" cy="${cy2}" r="${R}"/>`);
+        g.push(`<circle class="ring-fg" cx="${cx}" cy="${cy2}" r="${R}" stroke="${color}"` +
+          ` stroke-dasharray="${(C * prog.pct).toFixed(1)} ${C.toFixed(1)}"` +
+          ` style="transform-origin:${cx}px ${cy2}px"/>`);
+        g.push(`<text class="cnt" x="${cx}" y="${cy2 + 4}" text-anchor="middle" font-size="10.5">${Math.round(prog.pct * 100)}</text>`);
+        g.push(`<text class="title" x="${u.x + 12}" y="${u.y + 20}" font-size="13">${u.techs.length} 项</text>`);
+        const sub = st.orgId === 'benchmark'
+          ? (m.maturityById.get([...u.techs].sort((a, b) =>
+              (m.maturityById.get(b.maturity)?.order || 0) - (m.maturityById.get(a.maturity)?.order || 0))[0]?.maturity)?.name || '')
+          : (() => { const c = m.progressOf(u.techs).stat;
+              return `建成 ${c.built || 0} · 在建 ${c.building || 0}`; })();
+        g.push(`<text class="meta" x="${u.x + 12}" y="${u.y + u.h - 10}">${esc(fit(sub, u.w - 24 - R * 2, 10))}</text>`);
+        const aw = u.techs.reduce((a, t) => a + (t._awards?.length || 0), 0);
+        if (aw) g.push(`<text class="award" x="${u.x + u.w - R * 2 - 22}" y="${u.y + 19}">🏆</text>`);
       } else {
-        /* 聚合节点：进度环 + 子节点统计 */
+        /* 自由布局下的聚合节点：进度环 + 子节点统计 */
         const prog = st.orgId === 'benchmark' ? m.maturityOf(u.techs) : m.progressOf(u.techs);
         const R = u.kind === 'domain' ? 15 : 12;
         const cx = u.x + u.w - R - 13, cy2 = u.y + u.h / 2;
@@ -264,7 +313,26 @@ TT.render = (function () {
         }
       }
 
-      const cls = ['node', 'k-' + u.kind];
+      /* 退役 / 存量维持的技术叠一层斜纹 + 角标，
+       * 任何着色维度下都能看见 —— 不用置灰是因为置灰在状态维度里已表示「未建成」 */
+      const dead = isTech ? 0 : u.techs.filter(t => t.lifecycle && t.lifecycle !== 'active').length;
+      const lc = isTech ? (u.ref.lifecycle || 'active')
+        : (dead * 2 < u.techs.length ? 'active'
+          : u.techs.some(t => t.lifecycle === 'sunset') ? 'sunset' : 'legacy');
+      if (lc !== 'active') {
+        g.push(`<path d="${shapePath(u.x, u.y, u.w, u.h, hex)}" fill="url(#hatch)"
+          opacity="${isTech ? 1 : .55}" pointer-events="none"/>`);
+        if (isTech) g.push(`<text class="badge-txt" x="${u.x + u.w - 8}" y="${u.y + 13}" text-anchor="end"
+          fill="${lc === 'sunset' ? '#f87171' : '#94a3b8'}">${lc === 'sunset' ? '退役 ↓' : '存量'}</text>`);
+      }
+
+      if (!isTech) {
+        const ix = u.x + u.w - 11, iy = u.y + 11;
+        g.push(`<circle class="info-dot" cx="${ix}" cy="${iy}" r="8.5"/>`);
+        g.push(`<text class="info-i" x="${ix}" y="${iy + 3.6}" text-anchor="middle">i</text>`);
+      }
+
+      const cls = ['node', 'k-' + u.kind, 'lc-' + lc];
       if (locked) cls.push('locked');
       nodes.push(`<g class="${cls.join(' ')}" data-id="${esc(u.id)}" data-kind="${u.kind}" style="color:${color}">${g.join('')}</g>`);
     });

@@ -15,6 +15,7 @@
     colorMode: 'maturity',
     tagFilter: '',
     archFilter: new Set(),
+    eraFilter: new Set(),
     legendOff: false,
     search: '',
     selected: null,
@@ -96,6 +97,7 @@
 
     /* 可见单元 */
     let units = m.visibleUnits(S.nodes, S.expanded, S.h);
+    if (S.eraFilter.size) units = units.filter(u => S.eraFilter.has(u.era));
     if (S.archFilter.size) {
       units = units.filter(u => {
         const arch = u.kind === 'tech' ? u.ref._arch
@@ -143,13 +145,21 @@
     S.L = TT.layout.compute(units, S.nodes, S.h, S.edges);
     S.units = S.L.units;
 
-    /* 记录上一帧各单元的位置，渲染后做 FLIP 过渡 */
+    /* 渲染前先把即将消失的格子克隆成幽灵，渲染后让它们收回父格 */
     const prev = S.prevPos || new Map();
+    const keep = new Set(S.units.map(u => u.id));
+    const ghosts = [];
+    if (!S.noAnim) {
+      $('#canvas').querySelectorAll('.node').forEach(g => {
+        const id = g.dataset.id;
+        if (keep.has(id) || !prev.has(id)) return;
+        ghosts.push({ id, el: g.cloneNode(true), pos: prev.get(id) });
+      });
+    }
     TT.render.draw($('#canvas'), S.L, S);
-    animateFrom(prev);
-    S.prevPos = new Map(S.units.map(u => [u.id, { x: u.x, y: u.y }]));
+    animateTransition(prev, ghosts);
+    S.prevPos = new Map(S.units.map(u => [u.id, { x: u.x, y: u.y, cx: u.cx, cy: u.cy }]));
     applyTransform();
-    paintProgress();
     paintBreadcrumb();
     paintLegend();
     applyHighlight();
@@ -157,30 +167,84 @@
   }
   TT.rebuild = rebuild;
 
-  /* FLIP：先按旧位置反向位移，再让浏览器动画归零，得到平滑的展开过渡。
-   * 新出现的节点淡入放大，让「炸开」这一下看得清是从哪里出来的。 */
-  function animateFrom(prev) {
+  /* 展开 / 收拢的过渡动画。
+   * 关键不是「出现和消失」，而是让人看清 **一个格子变成了三个**：
+   * 新出现的子格从父格的旧位置放大出来，收拢时子格反向收回父格的新位置。 */
+  function ancestorsOf(unitId) {
+    const m = M(), { base, era } = m.splitUnitId(unitId);
+    const out = [];
+    const n = S.byId.get(base);
+    if (n) { out.push(n.cap + '@' + n.era, n._domain + '@' + n.era); return out; }
+    const cap = m.capById.get(base);
+    if (cap && era) out.push(cap.domain + '@' + era);
+    return out;
+  }
+  /* 收拢时，一个即将消失的格子会被谁接管 */
+  function successorOf(unitId, newIds) {
+    const m = M(), { base, era } = m.splitUnitId(unitId);
+    const n = S.byId.get(base);
+    const cands = n ? [n.cap + '@' + n.era, n._domain + '@' + n.era]
+      : (m.capById.get(base) && era ? [m.capById.get(base).domain + '@' + era] : []);
+    return cands.find(c => newIds.has(c)) || null;
+  }
+
+  function animateTransition(prevPos, ghosts) {
     if (S.noAnim) return;
     const svg = $('#canvas');
+    const vp = svg.querySelector('.viewport') || svg;
+    const newIds = new Set(S.units.map(u => u.id));
+    const EASE = 'transform .46s cubic-bezier(.22,.9,.3,1), opacity .38s ease';
+
+    /* ① 留下来的格子：FLIP 平移；② 新出现的格子：从父格旧位置放大出来 */
     svg.querySelectorAll('.node').forEach(g => {
       const id = g.dataset.id;
       const now = S.units.find(u => u.id === id); if (!now) return;
-      const old = prev.get(id);
+      const old = prevPos.get(id);
       if (old) {
         const dx = old.x - now.x, dy = old.y - now.y;
         if (Math.abs(dx) < .5 && Math.abs(dy) < .5) return;
         g.style.transition = 'none';
         g.style.transform = `translate(${dx}px,${dy}px)`;
       } else {
+        const from = ancestorsOf(id).map(a => prevPos.get(a)).find(Boolean);
         g.style.transition = 'none';
         g.style.transformOrigin = `${now.cx}px ${now.cy}px`;
-        g.style.transform = 'scale(.82)';
-        g.style.opacity = '0';
+        if (from) {
+          g.style.transform =
+            `translate(${from.cx - now.cx}px,${from.cy - now.cy}px) scale(.42)`;
+          g.style.opacity = '.15';
+        } else {
+          g.style.transform = 'scale(.82)';
+          g.style.opacity = '0';
+        }
       }
     });
+
+    /* ③ 消失的格子：做成幽灵，收回接管它的父格，让「三变一」看得见 */
+    if (ghosts.length) {
+      const layer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      layer.setAttribute('class', 'ghosts');
+      ghosts.forEach(({ id, el, pos }) => {
+        const to = successorOf(id, newIds);
+        const t = to && S.units.find(u => u.id === to);
+        el.style.transformOrigin = `${pos.cx}px ${pos.cy}px`;
+        el.style.transition = EASE;
+        el.style.pointerEvents = 'none';
+        layer.appendChild(el);
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          el.style.transform = t
+            ? `translate(${t.cx - pos.cx}px,${t.cy - pos.cy}px) scale(.42)`
+            : 'scale(.7)';
+          el.style.opacity = '0';
+        }));
+      });
+      vp.appendChild(layer);
+      setTimeout(() => layer.remove(), 500);
+    }
+
     requestAnimationFrame(() => requestAnimationFrame(() => {
       svg.querySelectorAll('.node').forEach(g => {
-        g.style.transition = 'transform .42s cubic-bezier(.22,.9,.3,1), opacity .34s ease';
+        g.style.transition = EASE;
         g.style.transform = 'translate(0,0)';
         g.style.opacity = '';
       });
@@ -202,23 +266,53 @@
       const cx = Math.min(Math.max((x0 + x1) / 2, Math.max(x0, 64) + 46), Math.min(x1, W) - 46);
       const hue = c.era.hue ?? 210;
       const col = S.theme === 'B' ? `hsl(${hue},55%,42%)` : `hsl(${hue},72%,64%)`;
-      return `<div class="era-chip" style="left:${cx}px">
+      const eon = S.eraFilter.has(c.era.id);
+      const eoff = S.eraFilter.size && !eon;
+      return `<div class="era-chip ${eoff ? 'dim' : ''} ${eon ? 'on' : ''}" data-era="${c.era.id}"
+                   style="left:${cx}px" title="${eon ? '取消只看' : '只看'}${c.era.name}">
         <div class="rm" style="color:${col}">${c.era.roman}</div>
         <div class="nm">${c.era.name}</div>
         <div class="pd">${c.era.period}</div>
         <div class="ul" style="background:${col}"></div>
       </div>`;
     }).join('');
+    eraBox.querySelectorAll('.era-chip').forEach(c => c.onclick = () => {
+      const e = c.dataset.era;
+      S.eraFilter.has(e) ? S.eraFilter.delete(e) : S.eraFilter.add(e);
+      if (S.eraFilter.size === M().tx.eras.length) S.eraFilter.clear();
+      rebuild(); fit();
+    });
 
+    const m = M(), benchmark = S.orgId === 'benchmark';
     laneBox.innerHTML = S.L.lanes.map(l => {
       const y0 = l.y * k + S.view.y, y1 = (l.y + l.h) * k + S.view.y;
       if (y1 < 0 || y0 > H) return '';
-      const cy = Math.min(Math.max((y0 + y1) / 2, Math.max(y0, 0) + 42), Math.min(y1, H) - 42);
+      const span = Math.min(y1, H) - Math.max(y0, 0);
+      if (span < 64) return '';            /* 泳道露出太少就不贴标签，免得压到相邻泳道 */
+      const w = Math.max(64, Math.min(span - 14, 250));
+      /* 泳道只露出一小截时，标签贴着可见区居中，保证始终看得到完整的架构名 */
+      const lo = Math.max(y0, 0) + w / 2 + 6, hi = Math.min(y1, H) - w / 2 - 6;
+      const cy = lo > hi ? (Math.max(y0, 0) + Math.min(y1, H)) / 2
+                        : Math.min(Math.max((y0 + y1) / 2, lo), hi);
       const col = S.theme === 'B' ? `hsl(${l.hue},58%,44%)` : `hsl(${l.hue},70%,60%)`;
-      const off = S.archFilter.size && !S.archFilter.has(l.id);
-      return `<div class="lane-chip ${off ? 'dim' : ''}" style="top:${cy}px">
-        <span class="cd" style="color:${col}">${l.code}</span> ${l.name}</div>`;
+      const techs = S.nodes.filter(n => n._arch === l.id);
+      const p = benchmark ? m.maturityOf(techs) : m.progressOf(techs);
+      const pct = Math.round(p.pct * 100);
+      const on = S.archFilter.has(l.id);
+      const off = S.archFilter.size && !on;
+      return `<div class="lane-chip ${off ? 'dim' : ''} ${on ? 'on' : ''}" data-arch="${l.id}"
+                   style="top:${cy}px;width:${w}px" title="${on ? '取消只看' : '只看'} ${l.code} ${l.name}">
+        <div class="lc-txt"><span class="cd" style="color:${col}">${l.code}</span> ${l.name}
+          <b style="color:${col}">${pct}%</b></div>
+        <div class="lc-bar"><i style="width:${pct}%;background:${col}"></i></div>
+      </div>`;
     }).join('');
+    laneBox.querySelectorAll('.lane-chip').forEach(c => c.onclick = () => {
+      const a = c.dataset.arch;
+      S.archFilter.has(a) ? S.archFilter.delete(a) : S.archFilter.add(a);
+      if (S.archFilter.size === M().tx.arch.length) S.archFilter.clear();
+      rebuild(); fit();
+    });
   }
 
   function applyTransform() {
@@ -298,38 +392,6 @@
     });
   }
 
-  /* ---------------- 顶部 5A 进度条 ---------------- */
-  function paintProgress() {
-    const m = M(), box = $('#progressbar');
-    const benchmark = S.orgId === 'benchmark';
-    box.innerHTML = m.tx.arch.map(a => {
-      const techs = S.nodes.filter(n => n._arch === a.id);
-      const p = benchmark ? m.maturityOf(techs) : m.progressOf(techs);
-      const color = S.theme === 'B' ? `hsl(${a.hue},58%,40%)` : `hsl(${a.hue},70%,58%)`;
-      const sub = benchmark
-        ? `${techs.length} 项 · 平均成熟度`
-        : `${p.stat?.built || 0}/${techs.length} 已建成`;
-      return `<div class="pb-cell" data-arch="${a.id}" title="${a.desc}">
-        <div class="pb-top"><span class="pb-name">${a.code} ${a.name}</span>
-          <span class="pb-pct">${Math.round(p.pct * 100)}%</span></div>
-        <div class="pb-track"><div class="pb-fill" style="width:${(p.pct * 100).toFixed(1)}%;background:${color}"></div></div>
-        <div class="pb-name" style="font-size:10.5px;opacity:.65">${sub}</div>
-      </div>`;
-    }).join('');
-    /* 点击 = 只看这一条架构线，再点一次取消；支持多选叠加 */
-    box.querySelectorAll('.pb-cell').forEach(c => {
-      c.classList.toggle('dim', S.archFilter.size > 0 && !S.archFilter.has(c.dataset.arch));
-      c.title = (S.archFilter.has(c.dataset.arch) ? '取消只看' : '只看') +
-        c.querySelector('.pb-name').textContent + '（可多选）';
-      c.onclick = () => {
-        const a = c.dataset.arch;
-        S.archFilter.has(a) ? S.archFilter.delete(a) : S.archFilter.add(a);
-        if (S.archFilter.size === m.tx.arch.length) S.archFilter.clear();
-        rebuild(); fit();
-      };
-    });
-  }
-
   /* ---------------- 面包屑 ---------------- */
   function paintBreadcrumb() {
     const m = M(), open = [...S.expanded];
@@ -369,6 +431,10 @@
       title = '技术成熟度（行业整体）';
       m.tx.maturity.forEach(s => rows.push([s.color, s.name]));
       note = '默认视图为世界金融科技基准，不代表任何一家机构的现状';
+    } else if (mode === 'lifecycle') {
+      title = '技术生命周期';
+      m.tx.lifecycle.forEach(l => rows.push([l.color, l.name]));
+      note = '斜纹底 = 已被替代或正在退役。<b>成熟度高不等于还该投入</b>——集中式核心就是成熟期 + 退役中';
     } else if (mode === 'autonomy') {
       title = '信创自主可控';
       m.tx.autonomy.forEach(s => rows.push([s.color, s.name]));
@@ -456,20 +522,31 @@
       S.hover = null; applyHighlight();
     });
 
+    /* 单击语义按节点类型分开，彻底避开「双击必然先触发单击」的冲突：
+     *   聚合格   单击 = 下钻展开；单击右上角 ⓘ = 看详情
+     *   技术节点 单击 = 看详情（它本来就没有下钻）
+     *   任意节点 双击 = 收拢一级
+     * 这样展开与看详情永远不会落在同一个手势上。 */
     svg.addEventListener('click', e => {
       if (drag && drag.moved) return;
       const g = e.target.closest('.node');
       if (!g) { S.selected = null; TT.ui.closeDrawer(); applyHighlight(); return; }
-      const id = g.dataset.id;
+      const id = g.dataset.id, kind = g.dataset.kind;
       if (S.planMode) return togglePlanTarget(id);
-      S.selected = id;
-      TT.ui.openDrawer(id);
-      applyHighlight();
+      const wantInfo = kind === 'tech' || !!e.target.closest('.info-dot');
+      if (wantInfo) {
+        S.selected = id;
+        TT.ui.openDrawer(id);
+        applyHighlight();
+      } else {
+        toggleUnit(id, kind, 'expand');
+      }
     });
 
     svg.addEventListener('dblclick', e => {
       const g = e.target.closest('.node'); if (!g) return;
-      toggleUnit(g.dataset.id, g.dataset.kind);
+      e.preventDefault();
+      toggleUnit(g.dataset.id, g.dataset.kind, 'collapse');
     });
 
     window.addEventListener('resize', () => { applyTransform(); drawStars(); });
@@ -478,20 +555,26 @@
   /* 展开 / 收拢同一个入口：
    * 领域格 → 展开为能力格；能力格 → 展开为技术节点；
    * 技术节点 → 收拢回它所属的能力格（再双击一次收回领域格）。 */
-  function toggleUnit(unitId, kind) {
+  function toggleUnit(unitId, kind, intent) {
     const m = M();
     const { base } = m.splitUnitId(unitId);
     let focus = base;
 
-    if (kind === 'tech') {
-      const n = S.byId.get(base); if (!n) return;
-      if (S.expanded.has(n.cap)) { S.expanded.delete(n.cap); focus = n.cap; }
-      else { S.expanded.delete(n._domain); focus = n._domain; }
-    } else if (S.expanded.has(base)) {
-      S.expanded.delete(base);
-      if (m.domById.has(base))
-        m.tx.capabilities.filter(c => c.domain === base).forEach(c => S.expanded.delete(c.id));
+    if (kind === 'tech' || intent === 'collapse') {
+      const n = kind === 'tech' ? S.byId.get(base) : null;
+      if (n) {
+        if (S.expanded.has(n.cap)) { S.expanded.delete(n.cap); focus = n.cap; }
+        else { S.expanded.delete(n._domain); focus = n._domain; }
+      } else if (S.expanded.has(base)) {
+        S.expanded.delete(base);
+        if (m.domById.has(base))
+          m.tx.capabilities.filter(c => c.domain === base).forEach(c => S.expanded.delete(c.id));
+      } else if (m.capById.has(base)) {
+        S.expanded.delete(m.capById.get(base).domain);
+        focus = m.capById.get(base).domain;
+      } else return;
     } else {
+      if (S.expanded.has(base)) return;   /* 已展开的格子不会再出现，无需处理 */
       S.expanded.add(base);
     }
 

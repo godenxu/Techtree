@@ -37,6 +37,7 @@
         <option value="maturity">技术成熟度（行业）</option>
         <option value="status">本单位建设状态</option>
         <option value="gap">与行业基准的差距</option>
+        <option value="lifecycle">技术生命周期（是否已被淘汰）</option>
         <option value="autonomy">信创自主可控</option>
         <option value="value">业务价值</option>
         <option value="award">金融科技发展奖</option>
@@ -62,9 +63,6 @@
     </div>
   </div>
 
-  <!-- ============ 5A 分线进度条 ============ -->
-  <div id="progressbar"></div>
-
   <!-- ============ 画布 ============ -->
   <div id="stage">
     <canvas id="stars"></canvas>
@@ -84,7 +82,7 @@
       <button class="btn" id="zFit" title="适应窗口">⤢</button>
     </div>
 
-    <div id="hint">滚轮缩放 · 拖拽平移 · 悬停看依赖链 · 单击看详情 · <b>双击大节点展开</b> · <b>双击技术节点收拢</b> · Esc 逐级收起</div>
+    <div id="hint">滚轮缩放 · 拖拽平移 · 悬停看依赖链 · <b>单击聚合格下钻</b> · <b>单击右上角 ⓘ 看详情</b> · 单击技术节点看详情 · <b>双击收拢一级</b> · Esc 逐级收起</div>
 
     <!-- 详情抽屉 -->
     <div id="drawer">

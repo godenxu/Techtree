@@ -439,3 +439,39 @@ body.presenting #presenter { display: block; }
 [data-theme="B"] .node.faded { opacity: .28; }
 [data-theme="B"] .edge.faded { opacity: .14; }
 [data-theme="B"] .pb-cell.dim { opacity: .45; }
+
+/* 矩阵视图的行名（画在 SVG 左侧留白里，导出 PNG 时一并带上） */
+.row-label { fill: var(--text); font-size: 12.5px; font-weight: 600; }
+.row-sub   { fill: var(--text-faint); font-size: 9.5px; }
+/* 退役 / 存量维持的节点 */
+.node.lc-sunset .shape { stroke-dasharray: 5 3; }
+
+/* 冻结列里的架构块：承载原顶部 A1–A5 进度条的信息与筛选功能 */
+#laneBar { width: 74px; }
+.lane-chip { pointer-events: auto; cursor: pointer; }
+.lane-chip .lc-txt { white-space: nowrap; }
+.lane-chip .lc-bar {
+  height: 3px; border-radius: 2px; background: var(--track);
+  margin-top: 5px; overflow: hidden;
+}
+.lane-chip .lc-bar i { display: block; height: 100%; border-radius: 2px; }
+.lane-chip:hover { color: var(--text); }
+.lane-chip.on .lc-txt { text-shadow: 0 0 10px currentColor; }
+.lane-chip.on .lc-bar { box-shadow: 0 0 0 1px var(--border-strong); }
+.era-chip { pointer-events: auto; cursor: pointer; }
+.era-chip.dim { opacity: .35; }
+.era-chip.on .nm { color: var(--text); }
+.era-chip:hover .nm { color: var(--text); }
+
+/* 聚合格右上角的 ⓘ：单击卡片下钻，单击 ⓘ 看详情，避免和双击抢操作 */
+.node .info-dot {
+  fill: var(--panel-solid); stroke: currentColor; stroke-width: 1;
+  opacity: .5; transition: opacity .15s;
+}
+.node .info-i {
+  font-size: 10px; font-weight: 700; font-style: italic;
+  fill: currentColor; opacity: .8; pointer-events: none;
+}
+.node:hover .info-dot { opacity: 1; }
+.node .info-dot:hover { fill: currentColor; }
+.lane-chip { overflow: hidden; text-overflow: ellipsis; }

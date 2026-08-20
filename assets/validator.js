@@ -62,6 +62,24 @@ TT.validate = function () {
     nodes.forEach(n => dfs(n.id));
   })();
 
+  /* 除了每条线真正的起点，其他节点都应该有前置 —— 没有前置说明依赖漏填了 */
+  const roots = nodes.filter(n => !(n.deps || []).length);
+  roots.forEach(r => {
+    if (eraIdx[r.era] > 0) E(`${r.id} ${r.name}（${r.era}）没有任何前置，只有第 Ⅰ 时代的起点技术才允许无前置`);
+  });
+  if (roots.length > 1) W(`根节点有 ${roots.length} 个：${roots.map(r => r.id + ' ' + r.name).join('、')}，确认是否都是真正的起点`);
+  /* 生命周期字段自洽性 */
+  nodes.forEach(n => {
+    if (n.lifecycle && !['active', 'legacy', 'sunset'].includes(n.lifecycle))
+      E(`${n.id} 的 lifecycle="${n.lifecycle}" 不合法`);
+    (n.supersededBy || []).forEach(x => {
+      if (!byId.has(x)) E(`${n.id} 的 supersededBy 指向不存在的节点 ${x}`);
+      else if (eraIdx[byId.get(x).era] < eraIdx[n.era]) W(`${n.id} 被更早时代的 ${x} 替代，确认是否写反`);
+    });
+    if (n.lifecycle && n.lifecycle !== 'active' && !(n.supersededBy || []).length)
+      W(`${n.id} 标记为${n.lifecycle === 'sunset' ? '退役中' : '存量维持'}但没写替代方向 supersededBy`);
+  });
+
   tx.capabilities.forEach(c => {
     if (!nodes.some(n => n.cap === c.id)) W(`能力 ${c.id} ${c.name} 下没有任何技术节点`);
   });

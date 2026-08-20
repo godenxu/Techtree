@@ -449,6 +449,42 @@ body.presenting #presenter { display: block; }
 [data-theme="B"] .edge.faded { opacity: .14; }
 [data-theme="B"] .pb-cell.dim { opacity: .45; }
 
+/* 矩阵视图的行名（画在 SVG 左侧留白里，导出 PNG 时一并带上） */
+.row-label { fill: var(--text); font-size: 12.5px; font-weight: 600; }
+.row-sub   { fill: var(--text-faint); font-size: 9.5px; }
+/* 退役 / 存量维持的节点 */
+.node.lc-sunset .shape { stroke-dasharray: 5 3; }
+
+/* 冻结列里的架构块：承载原顶部 A1–A5 进度条的信息与筛选功能 */
+#laneBar { width: 74px; }
+.lane-chip { pointer-events: auto; cursor: pointer; }
+.lane-chip .lc-txt { white-space: nowrap; }
+.lane-chip .lc-bar {
+  height: 3px; border-radius: 2px; background: var(--track);
+  margin-top: 5px; overflow: hidden;
+}
+.lane-chip .lc-bar i { display: block; height: 100%; border-radius: 2px; }
+.lane-chip:hover { color: var(--text); }
+.lane-chip.on .lc-txt { text-shadow: 0 0 10px currentColor; }
+.lane-chip.on .lc-bar { box-shadow: 0 0 0 1px var(--border-strong); }
+.era-chip { pointer-events: auto; cursor: pointer; }
+.era-chip.dim { opacity: .35; }
+.era-chip.on .nm { color: var(--text); }
+.era-chip:hover .nm { color: var(--text); }
+
+/* 聚合格右上角的 ⓘ：单击卡片下钻，单击 ⓘ 看详情，避免和双击抢操作 */
+.node .info-dot {
+  fill: var(--panel-solid); stroke: currentColor; stroke-width: 1;
+  opacity: .5; transition: opacity .15s;
+}
+.node .info-i {
+  font-size: 10px; font-weight: 700; font-style: italic;
+  fill: currentColor; opacity: .8; pointer-events: none;
+}
+.node:hover .info-dot { opacity: 1; }
+.node .info-dot:hover { fill: currentColor; }
+.lane-chip { overflow: hidden; text-overflow: ellipsis; }
+
 </style>
 </head>
 <body>
@@ -482,6 +518,7 @@ body.presenting #presenter { display: block; }
         <option value="maturity">技术成熟度（行业）</option>
         <option value="status">本单位建设状态</option>
         <option value="gap">与行业基准的差距</option>
+        <option value="lifecycle">技术生命周期（是否已被淘汰）</option>
         <option value="autonomy">信创自主可控</option>
         <option value="value">业务价值</option>
         <option value="award">金融科技发展奖</option>
@@ -507,9 +544,6 @@ body.presenting #presenter { display: block; }
     </div>
   </div>
 
-  <!-- ============ 5A 分线进度条 ============ -->
-  <div id="progressbar"></div>
-
   <!-- ============ 画布 ============ -->
   <div id="stage">
     <canvas id="stars"></canvas>
@@ -529,7 +563,7 @@ body.presenting #presenter { display: block; }
       <button class="btn" id="zFit" title="适应窗口">⤢</button>
     </div>
 
-    <div id="hint">滚轮缩放 · 拖拽平移 · 悬停看依赖链 · 单击看详情 · <b>双击大节点展开</b> · <b>双击技术节点收拢</b> · Esc 逐级收起</div>
+    <div id="hint">滚轮缩放 · 拖拽平移 · 悬停看依赖链 · <b>单击聚合格下钻</b> · <b>单击右上角 ⓘ 看详情</b> · 单击技术节点看详情 · <b>双击收拢一级</b> · Esc 逐级收起</div>
 
     <!-- 详情抽屉 -->
     <div id="drawer">
@@ -703,6 +737,17 @@ TT.taxonomy = {
     { id: 'low',    name: '低', desc: '主要为推断，未经核实' }
   ],
 
+  /* ---------------- 技术生命周期 ----------------
+   * 回答「这项技术是不是已经被时代淘汰了」。
+   * 注意：它与成熟度是两个正交的维度 —— 一项技术完全可以既「成熟期」又「退役中」
+   * （集中式核心就是典型）。也不能简单置灰，因为置灰在建设状态维度里
+   * 已经表示「未建成」，语义会打架。所以退役用斜纹叠加 + 角标表达。 */
+  lifecycle: [
+    { id: 'active', name: '演进中',   color: '#4ade80', desc: '仍在持续投入与发展' },
+    { id: 'legacy', name: '存量维持', color: '#94a3b8', desc: '仍在运行，但不再投入新建，正逐步被替代' },
+    { id: 'sunset', name: '退役中',   color: '#f87171', desc: '已有明确替代路径，行业正在主动下线' }
+  ],
+
   /* ---------------- 自主可控（信创）适配度 ---------------- */
   autonomy: [
     { id: 'full',      name: '已全栈适配', color: '#4ade80' },
@@ -762,6 +807,7 @@ TT.nodes = [
     stack:['C/S 架构','交易前置'] },
 
   { id:'T1012', name:'ATM 与自助设备', en:'ATM & Self-service', cap:'C101', era:'E1', deps:['T1011'],
+    lifecycle:'legacy', supersededBy:['T1023'], sunsetNote:'交易量持续向移动端迁移，网点自助设备缩减',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'partial', tags:[],
     effort:{manMonth:200,months:12}, value:3, risk:2,
     desc:'自动柜员机、存取款一体机等自助渠道，把简单交易从柜面剥离。',
@@ -784,6 +830,7 @@ TT.nodes = [
     pitfall:'容易做成硬件堆砌，关键在与线上渠道的客户旅程打通' },
 
   { id:'T1021', name:'电话银行与呼叫中心', en:'Call Center', cap:'C102', era:'E2', deps:['T2011'],
+    lifecycle:'legacy', supersededBy:['T8032'], sunsetNote:'人工话务持续下降，向智能客服与在线渠道分流',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'partial', tags:[],
     effort:{manMonth:250,months:12}, value:3, risk:2,
     desc:'基于 IVR 与人工坐席的远程服务渠道，是后续智能客服的载体。',
@@ -791,6 +838,7 @@ TT.nodes = [
     stack:['CTI','IVR','录音质检'] },
 
   { id:'T1022', name:'网上银行', en:'Internet Banking', cap:'C102', era:'E2', deps:['T4012','T11013'],
+    lifecycle:'legacy', supersededBy:['T1023'], sunsetNote:'个人网银流量已被手机银行取代，企业网银仍在用',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'partial', tags:[],
     effort:{manMonth:400,months:15}, value:4, risk:3,
     desc:'面向个人与企业的 Web 端自助金融服务，银行第一个真正的线上渠道。',
@@ -851,6 +899,7 @@ TT.nodes = [
   /* ═══════════════ D02 产品与交易能力 ═══════════════ */
 
   { id:'T2011', name:'集中式核心银行系统', en:'Centralized Core Banking', cap:'C201', era:'E1', deps:['T9011'],
+    lifecycle:'sunset', supersededBy:['T4021'], sunsetNote:'账务核心正被分布式核心替代，新建投入应转向 T4021',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'dependent', tags:['xinchuang'],
     effort:{manMonth:3000,months:36}, value:5, risk:5,
     desc:'账务处理的心脏，承载存贷汇的记账与产品定义，通常运行在主机之上。',
@@ -866,6 +915,7 @@ TT.nodes = [
     stack:['总账系统','科目体系'] },
 
   { id:'T2012', name:'综合前置与渠道整合层', en:'Front-end Integration', cap:'C201', era:'E2', deps:['T2011'],
+    lifecycle:'sunset', supersededBy:['T3011', 'T4015'], sunsetNote:'综合前置的职责被 API 网关与微服务分解',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'partial', tags:[],
     effort:{manMonth:400,months:15}, value:3, risk:3,
     desc:'隔离渠道与核心的交易前置层，负责协议转换、流量控制与交易路由。',
@@ -1026,6 +1076,7 @@ TT.nodes = [
   /* ═══════════════ D04 核心系统与应用架构 ═══════════════ */
 
   { id:'T4011', name:'主机批处理与集中式架构', en:'Mainframe Batch', cap:'C401', era:'E1', deps:['T9011'],
+    lifecycle:'sunset', supersededBy:['T4023'], sunsetNote:'主机批处理随核心下移工程逐步退出',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'dependent', tags:['xinchuang'],
     effort:{manMonth:800,months:24}, value:4, risk:3,
     desc:'以日终批处理为节奏的主机应用架构，稳定但难以支撑实时与弹性需求。',
@@ -1033,6 +1084,7 @@ TT.nodes = [
     stack:['z/OS','JCL','COBOL'] },
 
   { id:'T4012', name:'三层架构与应用中间件', en:'Three-tier Architecture', cap:'C401', era:'E2', deps:['T4011','T9012'],
+    lifecycle:'legacy', supersededBy:['T4015'], sunsetNote:'三层架构应用逐步微服务化改造',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'partial', tags:['xinchuang'],
     effort:{manMonth:500,months:18}, value:3, risk:3,
     desc:'表示层、应用层、数据层分离，开放平台应用的标准形态。',
@@ -1040,6 +1092,7 @@ TT.nodes = [
     stack:['WebLogic / WebSphere','Tomcat','Java EE'] },
 
   { id:'T4013', name:'ESB 企业服务总线', en:'Enterprise Service Bus', cap:'C401', era:'E2', deps:['T4012'],
+    lifecycle:'sunset', supersededBy:['T4015', 'T3011'], sunsetNote:'集中式总线被微服务治理与 API 网关取代',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'partial', tags:[],
     effort:{manMonth:400,months:15}, value:3, risk:3,
     desc:'集中式的服务集成中枢，解决系统间点对点接口爆炸问题。',
@@ -1048,6 +1101,7 @@ TT.nodes = [
     pitfall:'集中式总线本身会成为性能与变更瓶颈，是后续微服务化的动因' },
 
   { id:'T4014', name:'SOA 服务化与接口标准', en:'SOA', cap:'C401', era:'E3', deps:['T4013'],
+    lifecycle:'legacy', supersededBy:['T4015'], sunsetNote:'SOA 粗粒度服务向微服务细化',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'partial', tags:[],
     effort:{manMonth:600,months:20}, value:4, risk:3,
     desc:'按业务能力拆分粗粒度服务并建立企业级接口规范与服务目录。',
@@ -1180,6 +1234,7 @@ TT.nodes = [
     stack:['用例生成','智能缺陷定位'] },
 
   { id:'T5031', name:'集中监控与运维管理', en:'Centralized Monitoring', cap:'C503', era:'E2', deps:['T9012'],
+    lifecycle:'legacy', supersededBy:['T5032'], sunsetNote:'传统网管监控无法定位微服务问题，向可观测性演进',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'partial', tags:[],
     effort:{manMonth:300,months:12}, value:3, risk:2,
     desc:'主机、网络、中间件的集中监控告警与运维流程管理。',
@@ -1220,6 +1275,7 @@ TT.nodes = [
   /* ═══════════════ D06 数据基础与治理 ═══════════════ */
 
   { id:'T6011', name:'生产报表与直连查询', en:'Production Reporting', cap:'C601', era:'E1', deps:['T9011'],
+    lifecycle:'sunset', supersededBy:['T6013'], sunsetNote:'直连生产库取数早已被数据仓库取代，仍存在即是技术债',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'partial', tags:[],
     effort:{manMonth:120,months:6}, value:2, risk:2,
     desc:'直接从生产库取数出报表的原始形态，数据分析的史前阶段。',
@@ -1228,6 +1284,7 @@ TT.nodes = [
     pitfall:'查询直接压生产库，是后续建设 ODS 的直接动因' },
 
   { id:'T6012', name:'ODS 操作型数据存储', en:'Operational Data Store', cap:'C601', era:'E2', deps:['T6011'],
+    lifecycle:'legacy', supersededBy:['T6015', 'T6033'], sunsetNote:'ODS 的整合职责被数据湖与实时数仓接管',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'partial', tags:[],
     effort:{manMonth:300,months:12}, value:3, risk:3,
     desc:'把生产数据准实时抽取到独立库，分析查询与生产交易解耦。',
@@ -1533,6 +1590,7 @@ TT.nodes = [
   /* ═══════════════ D09 基础设施与云 ═══════════════ */
 
   { id:'T9011', name:'主机与核心机房', en:'Mainframe & Data Center', cap:'C901', era:'E1', deps:[],
+    lifecycle:'legacy', supersededBy:['T9022', 'T9026'], sunsetNote:'主机部分随核心下移退出；机房基础设施本身持续演进',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'dependent', tags:['xinchuang'],
     effort:{manMonth:400,months:24}, value:5, risk:3,
     desc:'全行 IT 的物理起点：机房、主机与集中式算力，一切节点的最终地基。',
@@ -1547,6 +1605,7 @@ TT.nodes = [
     stack:['专线','MPLS','广域网优化'] },
 
   { id:'T9013', name:'集中式存储与备份', en:'Centralized Storage & Backup', cap:'C901', era:'E1', deps:['T9011'],
+    lifecycle:'legacy', supersededBy:['T9026'], sunsetNote:'集中式存储阵列逐步让位给分布式存储',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'dependent', tags:['xinchuang'],
     effort:{manMonth:250,months:12}, value:4, risk:3,
     desc:'集中式存储阵列与备份体系，数据可靠性的第一道保障。',
@@ -1554,6 +1613,7 @@ TT.nodes = [
     stack:['SAN 存储','磁带库','备份软件'] },
 
   { id:'T9021', name:'服务器虚拟化', en:'Server Virtualization', cap:'C902', era:'E3', deps:['T9013','T9012'],
+    lifecycle:'legacy', supersededBy:['T9023'], sunsetNote:'虚拟机仍在跑，新增负载优先容器化',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'partial', tags:['xinchuang'],
     effort:{manMonth:250,months:12}, value:4, risk:2,
     desc:'把物理服务器抽象为虚拟机池，资源交付从周降到小时。',
@@ -1928,6 +1988,7 @@ TT.nodes = [
     pitfall:'AI 训练对存储吞吐的要求远高于传统业务，选型时要按训练场景压测' },
 
   { id:'T11016', name:'集中账号与授权管理', en:'Centralized Account Management', cap:'C1101', era:'E3', deps:['T11011'],
+    lifecycle:'legacy', supersededBy:['T11012'], sunsetNote:'集中账号台账被 IAM / 4A 平台吸收',
     maturity:'mature', adoption:'universal', confidence:'high', autonomy:'partial', tags:[],
     effort:{manMonth:280,months:14}, value:4, risk:3,
     desc:'把散落在各系统的账号与权限收口到统一台账，是 IAM / 4A 的前置阶段。',
@@ -2393,6 +2454,24 @@ TT.validate = function () {
     nodes.forEach(n => dfs(n.id));
   })();
 
+  /* 除了每条线真正的起点，其他节点都应该有前置 —— 没有前置说明依赖漏填了 */
+  const roots = nodes.filter(n => !(n.deps || []).length);
+  roots.forEach(r => {
+    if (eraIdx[r.era] > 0) E(`${r.id} ${r.name}（${r.era}）没有任何前置，只有第 Ⅰ 时代的起点技术才允许无前置`);
+  });
+  if (roots.length > 1) W(`根节点有 ${roots.length} 个：${roots.map(r => r.id + ' ' + r.name).join('、')}，确认是否都是真正的起点`);
+  /* 生命周期字段自洽性 */
+  nodes.forEach(n => {
+    if (n.lifecycle && !['active', 'legacy', 'sunset'].includes(n.lifecycle))
+      E(`${n.id} 的 lifecycle="${n.lifecycle}" 不合法`);
+    (n.supersededBy || []).forEach(x => {
+      if (!byId.has(x)) E(`${n.id} 的 supersededBy 指向不存在的节点 ${x}`);
+      else if (eraIdx[byId.get(x).era] < eraIdx[n.era]) W(`${n.id} 被更早时代的 ${x} 替代，确认是否写反`);
+    });
+    if (n.lifecycle && n.lifecycle !== 'active' && !(n.supersededBy || []).length)
+      W(`${n.id} 标记为${n.lifecycle === 'sunset' ? '退役中' : '存量维持'}但没写替代方向 supersededBy`);
+  });
+
   tx.capabilities.forEach(c => {
     if (!nodes.some(n => n.cap === c.id)) W(`能力 ${c.id} ${c.name} 下没有任何技术节点`);
   });
@@ -2738,8 +2817,72 @@ TT.layout = (function () {
     return depth;
   }
 
+  /* ───────────── 矩阵布局（聚合视图专用）─────────────
+   * 一个领域 / 能力占一整行，横跨它有技术的所有时代，用一条带连起来；
+   * 名称只在左侧冻结列出现一次，格子里只放数量与完成度。
+   * 这样就不会出现「同一个领域在图上冒出来好几次」的困惑。 */
+  const MX = { cellW: 172, cellH: 46, rowGap: 9, colPad: 22, leftW: 228, labelX: 78 };
+
+  function computeMatrix(units, nodes, h) {
+    const m = M(), tx = m.tx;
+
+    const eraUsed = tx.eras.filter(e => units.some(u => u.era === e.id));
+    const colIdx = new Map(eraUsed.map((e, i) => [e.id, i]));
+    const colW = MX.cellW + MX.colPad * 2;
+    const cols = eraUsed.map((e, i) => ({ era: e, i, subs: 1, x: MX.leftW + i * colW, w: colW }));
+    const width = MX.leftW + eraUsed.length * colW + 16;
+
+    /* 行的顺序：先按泳道，再按分类体系里的既有顺序 */
+    const order = [];
+    tx.domains.forEach(d => {
+      if (units.some(u => u.base === d.id)) order.push({ base: d.id, kind: 'domain', ref: d, arch: d.arch });
+      tx.capabilities.filter(c => c.domain === d.id).forEach(c => {
+        if (units.some(u => u.base === c.id)) order.push({ base: c.id, kind: 'cap', ref: c, arch: d.arch });
+      });
+    });
+
+    const lanes = tx.arch.filter(a => order.some(r => r.arch === a.id))
+      .map(a => ({ ...a })).sort((a, b) => a.lane - b.lane);
+    const rowH = MX.cellH + MX.rowGap;
+    let y = HEAD_H;
+    lanes.forEach(l => {
+      const rows = order.filter(r => r.arch === l.id);
+      l.h = Math.max(rows.length * rowH, rowH) + LANE_PAD * 2;
+      l.y = y; y += l.h;
+      rows.forEach((r, i) => { r.lane = l.lane; r.y = l.y + LANE_PAD + i * rowH; r.h = MX.cellH; });
+    });
+    const height = y + 24;
+
+    const placed = units.map(u => {
+      const row = order.find(r => r.base === u.base);
+      const c = cols[colIdx.get(u.era)];
+      const x = c.x + MX.colPad;
+      return {
+        ...u, kind: u.kind, lane: row.lane, arch: row.arch, row: row.base,
+        techs: m.descendants(u.id, nodes, h),
+        w: MX.cellW, h: MX.cellH, col: colIdx.get(u.era),
+        x, y: row.y, cx: x + MX.cellW / 2, cy: row.y + MX.cellH / 2
+      };
+    });
+
+    /* 每行的带：从该行最左的格子延伸到最右 */
+    order.forEach(r => {
+      const mine = placed.filter(p => p.row === r.base);
+      r.x0 = Math.min(...mine.map(p => p.x));
+      r.x1 = Math.max(...mine.map(p => p.x + p.w));
+      r.count = mine.reduce((s, p) => s + p.techs.length, 0);
+    });
+
+    return { units: placed, lanes, cols, rows: order, width, height,
+             LEFT_W: MX.leftW, LABEL_X: MX.labelX, HEAD_H, matrix: true };
+  }
+
   function compute(units, nodes, h, edges) {
     const m = M(), tx = m.tx;
+
+    /* 全是聚合单元时走矩阵布局；一旦混入技术节点就回到自由 DAG 布局，
+     * 因为技术层按行铺会变成一张极高极窄的图，反而看不清。 */
+    if (units.length && units.every(u => u.kind !== 'tech')) return computeMatrix(units, nodes, h);
 
     /* --- 归位：每个单元的时代列与泳道 --- */
     const placed = units.map(u => {
@@ -2849,7 +2992,7 @@ TT.layout = (function () {
       });
     });
 
-    return { units: placed, lanes, cols, width, height, LEFT_W, HEAD_H };
+    return { units: placed, lanes, cols, width, height, LEFT_W, HEAD_H, matrix: false };
   }
 
   /* 依赖连线：左出右进的三次贝塞尔；逆向或同列时从下方绕行 */
@@ -2964,6 +3107,12 @@ TT.render = (function () {
         : (techs.length ? techs.reduce((s, t) => s + (t.value || 3), 0) / techs.length : 3);
       return v >= 4.6 ? '#f5c451' : v >= 4 ? '#fbbf24' : v >= 3.2 ? '#60a5fa' : '#64748b';
     }
+    if (mode === 'lifecycle') {
+      if (u.kind === 'tech') return (m.tx.lifecycle.find(l => l.id === (u.ref.lifecycle || 'active')) || {}).color;
+      const bad = techs.filter(t => t.lifecycle && t.lifecycle !== 'active').length;
+      const r = techs.length ? bad / techs.length : 0;
+      return r >= .5 ? '#f87171' : r > 0 ? '#94a3b8' : '#4ade80';
+    }
     if (mode === 'award') {
       const n = techs.reduce((s, t) => s + (t._awards?.length || 0), 0);
       return n >= 4 ? '#f5c451' : n >= 2 ? '#d9a441' : n >= 1 ? '#8a7a4a' : '#4a5568';
@@ -2990,10 +3139,14 @@ TT.render = (function () {
     const parts = [];
 
     /* --- defs --- */
+    const hatchCol = st.theme === 'B' ? 'rgba(30,45,70,.30)' : 'rgba(220,232,250,.26)';
     parts.push(`<defs>
       <marker id="arw" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto">
         <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
       </marker>
+      <pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        <line x1="0" y1="0" x2="0" y2="7" stroke="${hatchCol}" stroke-width="2.2"/>
+      </pattern>
     </defs>`);
 
     /* --- 背景：泳道走色相，时代走明度 + 彩虹色带 ---
@@ -3002,47 +3155,66 @@ TT.render = (function () {
     const light = st.theme === 'B';
     /* 五条泳道一视同仁：安全架构不再用更重的底色特殊突出，
      * 它的横切性质由「贯穿」标签和位置表达，不靠颜色喊。 */
-    const laneTint = hue => light ? `hsla(${hue},60%,45%,.115)` : `hsla(${hue},70%,55%,.115)`;
+    /* 泳道只留很淡的底色，身份主要靠左侧色条和冻结列的色标表达；
+     * 时代是主背景层，明度差拉开，画在泳道之上才不会被盖住。 */
+    const laneTint = hue => light ? `hsla(${hue},58%,46%,.045)` : `hsla(${hue},68%,58%,.045)`;
     const laneBar  = hue => light ? `hsl(${hue},58%,44%)` : `hsl(${hue},70%,60%)`;
-    /* 时代明度递进：暗色主题越往后越亮，亮色主题越往后越深 */
     const eraTint = i => {
       const t = tx.eras.length > 1 ? i / (tx.eras.length - 1) : 0;
-      return light ? `rgba(24,48,84,${(0.030 + t * 0.055).toFixed(3)})`
-                   : `rgba(198,222,255,${(0.026 + t * 0.050).toFixed(3)})`;
+      return light ? `rgba(22,44,80,${(0.022 + t * 0.072).toFixed(3)})`
+                   : `rgba(200,224,255,${(0.018 + t * 0.068).toFixed(3)})`;
     };
     const eraBar = hue => light ? `hsl(${hue},55%,46%)` : `hsl(${hue},72%,64%)`;
 
     const bg = [];
-
-    /* 时代列：底色明度递进 + 顶部彩虹色带 + 罗马数字水印 */
     const bodyTop = L.HEAD_H, bodyH = L.height - L.HEAD_H;
-    L.cols.forEach((c, i) => {
-      bg.push(`<rect x="${c.x}" y="${bodyTop}" width="${c.w}" height="${bodyH}" fill="${eraTint(c.era ? tx.eras.indexOf(c.era) : i)}"/>`);
-      const hue = c.era.hue ?? 210;
-      const cx = c.x + c.w / 2;
-      bg.push(`<text x="${cx}" y="${L.height - 26}" text-anchor="middle" font-size="150" font-weight="700"
-        fill="${eraBar(hue)}" opacity="${light ? .035 : .04}" pointer-events="none">${c.era.roman}</text>`);
-      bg.push(`<rect x="${c.x + 8}" y="${bodyTop - 8}" width="${c.w - 16}" height="4" rx="2" fill="${eraBar(hue)}" opacity=".72"/>`);
-      bg.push(`<line x1="${c.x}" y1="${bodyTop - 8}" x2="${c.x}" y2="${L.height}" stroke="${eraBar(hue)}" stroke-opacity="${light ? .20 : .24}" stroke-width="1"/>`);
 
+    /* ① 泳道底色与左侧色条（很淡，只做归属提示） */
+    L.lanes.forEach(l => {
+      bg.push(`<rect x="0" y="${l.y}" width="${L.width}" height="${l.h}" fill="${laneTint(l.hue)}"/>`);
+      bg.push(`<rect x="0" y="${l.y + 3}" width="6" height="${l.h - 6}" rx="3" fill="${laneBar(l.hue)}" opacity=".9"/>`);
+    });
+
+    /* ② 时代列：主背景层，画在泳道之上 */
+    L.cols.forEach(c => {
+      const i = tx.eras.indexOf(c.era), hue = c.era.hue ?? 210, cx = c.x + c.w / 2;
+      bg.push(`<rect x="${c.x}" y="${bodyTop}" width="${c.w}" height="${bodyH}" fill="${eraTint(i)}"/>`);
+      bg.push(`<text x="${cx}" y="${L.height - 22}" text-anchor="middle" font-size="150" font-weight="700"
+        fill="${eraBar(hue)}" opacity="${light ? .05 : .055}" pointer-events="none">${c.era.roman}</text>`);
+      bg.push(`<rect x="${c.x + 8}" y="${bodyTop - 8}" width="${c.w - 16}" height="4" rx="2" fill="${eraBar(hue)}" opacity=".8"/>`);
+      bg.push(`<line x1="${c.x}" y1="${bodyTop - 8}" x2="${c.x}" y2="${L.height}" stroke="${eraBar(hue)}" stroke-opacity="${light ? .22 : .26}" stroke-width="1"/>`);
     });
     bg.push(`<line x1="${L.width}" y1="${bodyTop - 8}" x2="${L.width}" y2="${L.height}" stroke="var(--grid)" stroke-width="1"/>`);
 
-    /* 泳道：色相底色 + 左侧彩色轨道条 + 带色标签 */
-    L.lanes.forEach(l => {
-      bg.push(`<rect x="0" y="${l.y}" width="${L.width}" height="${l.h}" fill="${laneTint(l.hue)}"/>`);
-      bg.push(`<line class="lane-line" x1="0" y1="${l.y}" x2="${L.width}" y2="${l.y}"/>`);
-      bg.push(`<rect x="0" y="${l.y + 3}" width="6" height="${l.h - 6}" rx="3" fill="${laneBar(l.hue)}" opacity=".9"/>`);
-    });
-    const last = L.lanes.at(-1);
-    bg.push(`<line class="lane-line" x1="0" y1="${last.y + last.h}" x2="${L.width}" y2="${last.y + last.h}"/>`);
+    /* ③ 泳道分隔线画在最上层，保证行的边界清楚 */
+    L.lanes.forEach(l => bg.push(`<line class="lane-line" x1="0" y1="${l.y}" x2="${L.width}" y2="${l.y}"/>`));
+    const lastLane = L.lanes.at(-1);
+    bg.push(`<line class="lane-line" x1="0" y1="${lastLane.y + lastLane.h}" x2="${L.width}" y2="${lastLane.y + lastLane.h}"/>`);
+
+    /* ④ 矩阵视图：每行一条横跨时代的带 + 左侧行名（行名画进 SVG，导出 PNG 才带得上） */
+    if (L.matrix) {
+      L.rows.forEach(r => {
+        const laneR = L.lanes.find(l => l.lane === r.lane);
+        bg.push(`<text class="row-label" x="${L.LABEL_X}" y="${r.y + r.h / 2 - 3}">` +
+          `${esc(fit(r.ref.name, L.LEFT_W - L.LABEL_X - 12, 12))}</text>`);
+        bg.push(`<text class="row-sub" x="${L.LABEL_X}" y="${r.y + r.h / 2 + 11}">` +
+          `全时代共 ${r.count} 项</text>`);
+        const col = laneBar(laneR.hue);
+        bg.push(`<rect x="${r.x0 - 12}" y="${r.y - 5}" width="${r.x1 - r.x0 + 24}" height="${r.h + 10}"
+          rx="${(r.h + 10) / 2}" fill="${col}" opacity="${light ? .10 : .085}"/>`);
+        bg.push(`<rect x="${r.x0 - 12}" y="${r.y - 5}" width="${r.x1 - r.x0 + 24}" height="${r.h + 10}"
+          rx="${(r.h + 10) / 2}" fill="none" stroke="${col}" stroke-opacity=".45" stroke-width="1"/>`);
+        bg.push(`<line x1="${r.x0}" y1="${r.y + r.h / 2}" x2="${r.x1}" y2="${r.y + r.h / 2}"
+          stroke="${col}" stroke-opacity=".34" stroke-width="1.4" stroke-dasharray="2 4"/>`);
+      });
+    }
 
     parts.push(`<g class="bg">${bg.join('')}</g>`);
 
     /* --- 跨 5A 宽卡片的背景带（如「人工智能与大模型」领域） --- */
     const spans = [];
     const spanGroups = new Map();
-    L.units.forEach(u => {
+    if (!L.matrix) L.units.forEach(u => {
       if (u.kind === 'domain' && u.ref.spanArch?.length) {
         const g = spanGroups.get(u.base) || { x0: Infinity, x1: -Infinity };
         g.x0 = Math.min(g.x0, u.x); g.x1 = Math.max(g.x1, u.x + u.w);
@@ -3087,8 +3259,10 @@ TT.render = (function () {
 
       const padX = 12;
       let ty = u.y + (isTech ? 21 : 22);
-      const name = u.kind === 'tech' ? u.ref.name : u.ref.name;
-      g.push(`<text class="title" x="${u.x + padX}" y="${ty}" font-size="${titleSize}">${esc(fit(name, u.w - padX * 2 - (isTech ? 16 : 34), titleSize))}</text>`);
+      if (isTech || !L.matrix) {
+        g.push(`<text class="title" x="${u.x + padX}" y="${ty}" font-size="${titleSize}">` +
+          `${esc(fit(u.ref.name, u.w - padX * 2 - (isTech ? 16 : 34), titleSize))}</text>`);
+      }
 
       if (isTech) {
         const n = u.ref;
@@ -3106,8 +3280,26 @@ TT.render = (function () {
           g.push(`<circle class="pulse" cx="${u.x + u.w - 11}" cy="${u.y + 11}" r="4" fill="${color}"/>`);
         if (n._status === 'building')
           g.push(`<path class="building-ring" d="${shapePath(u.x - 3, u.y - 3, u.w + 6, u.h + 6, hex)}"/>`);
+      } else if (L.matrix) {
+        /* 矩阵格：名称已经在行名里，格子里只放数量与完成度 */
+        const prog = st.orgId === 'benchmark' ? m.maturityOf(u.techs) : m.progressOf(u.techs);
+        const R = 14, cx = u.x + u.w - R - 12, cy2 = u.y + u.h / 2, C = 2 * Math.PI * R;
+        g.push(`<circle class="ring-bg" cx="${cx}" cy="${cy2}" r="${R}"/>`);
+        g.push(`<circle class="ring-fg" cx="${cx}" cy="${cy2}" r="${R}" stroke="${color}"` +
+          ` stroke-dasharray="${(C * prog.pct).toFixed(1)} ${C.toFixed(1)}"` +
+          ` style="transform-origin:${cx}px ${cy2}px"/>`);
+        g.push(`<text class="cnt" x="${cx}" y="${cy2 + 4}" text-anchor="middle" font-size="10.5">${Math.round(prog.pct * 100)}</text>`);
+        g.push(`<text class="title" x="${u.x + 12}" y="${u.y + 20}" font-size="13">${u.techs.length} 项</text>`);
+        const sub = st.orgId === 'benchmark'
+          ? (m.maturityById.get([...u.techs].sort((a, b) =>
+              (m.maturityById.get(b.maturity)?.order || 0) - (m.maturityById.get(a.maturity)?.order || 0))[0]?.maturity)?.name || '')
+          : (() => { const c = m.progressOf(u.techs).stat;
+              return `建成 ${c.built || 0} · 在建 ${c.building || 0}`; })();
+        g.push(`<text class="meta" x="${u.x + 12}" y="${u.y + u.h - 10}">${esc(fit(sub, u.w - 24 - R * 2, 10))}</text>`);
+        const aw = u.techs.reduce((a, t) => a + (t._awards?.length || 0), 0);
+        if (aw) g.push(`<text class="award" x="${u.x + u.w - R * 2 - 22}" y="${u.y + 19}">🏆</text>`);
       } else {
-        /* 聚合节点：进度环 + 子节点统计 */
+        /* 自由布局下的聚合节点：进度环 + 子节点统计 */
         const prog = st.orgId === 'benchmark' ? m.maturityOf(u.techs) : m.progressOf(u.techs);
         const R = u.kind === 'domain' ? 15 : 12;
         const cx = u.x + u.w - R - 13, cy2 = u.y + u.h / 2;
@@ -3136,7 +3328,26 @@ TT.render = (function () {
         }
       }
 
-      const cls = ['node', 'k-' + u.kind];
+      /* 退役 / 存量维持的技术叠一层斜纹 + 角标，
+       * 任何着色维度下都能看见 —— 不用置灰是因为置灰在状态维度里已表示「未建成」 */
+      const dead = isTech ? 0 : u.techs.filter(t => t.lifecycle && t.lifecycle !== 'active').length;
+      const lc = isTech ? (u.ref.lifecycle || 'active')
+        : (dead * 2 < u.techs.length ? 'active'
+          : u.techs.some(t => t.lifecycle === 'sunset') ? 'sunset' : 'legacy');
+      if (lc !== 'active') {
+        g.push(`<path d="${shapePath(u.x, u.y, u.w, u.h, hex)}" fill="url(#hatch)"
+          opacity="${isTech ? 1 : .55}" pointer-events="none"/>`);
+        if (isTech) g.push(`<text class="badge-txt" x="${u.x + u.w - 8}" y="${u.y + 13}" text-anchor="end"
+          fill="${lc === 'sunset' ? '#f87171' : '#94a3b8'}">${lc === 'sunset' ? '退役 ↓' : '存量'}</text>`);
+      }
+
+      if (!isTech) {
+        const ix = u.x + u.w - 11, iy = u.y + 11;
+        g.push(`<circle class="info-dot" cx="${ix}" cy="${iy}" r="8.5"/>`);
+        g.push(`<text class="info-i" x="${ix}" y="${iy + 3.6}" text-anchor="middle">i</text>`);
+      }
+
+      const cls = ['node', 'k-' + u.kind, 'lc-' + lc];
       if (locked) cls.push('locked');
       nodes.push(`<g class="${cls.join(' ')}" data-id="${esc(u.id)}" data-kind="${u.kind}" style="color:${color}">${g.join('')}</g>`);
     });
@@ -3244,6 +3455,14 @@ TT.ui = (function () {
     sections.push(`<div class="dw-sec"><p>${esc(n.desc)}</p></div>`);
 
     if (n.pitfall) sections.push(`<div class="dw-sec"><div class="callout">⚠ ${esc(n.pitfall)}</div></div>`);
+    const lc = m.tx.lifecycle.find(l => l.id === (n.lifecycle || 'active'));
+    if (n.lifecycle && n.lifecycle !== 'active') {
+      const rep = (n.supersededBy || []).map(x => S.byId.get(x)).filter(Boolean);
+      sections.push(`<div class="dw-sec"><div class="callout" style="border-color:${lc.color};background:${lc.color}14;color:${lc.color}">
+        <b>${lc.name}</b> · ${esc(lc.desc)}<br>${esc(n.sunsetNote || '')}
+        ${rep.length ? `<div style="margin-top:6px">替代方向：${rep.map(r => `<span class="chip" data-go="${r.id}">${esc(r.name)}</span>`).join(' ')}</div>` : ''}
+      </div></div>`);
+    }
     if (gate.length) sections.push(`<div class="dw-sec"><div class="callout gate">🔒 合规闸门：本节点受安全架构约束，前置为 ${gate.map(g => esc(g.name)).join('、')}</div></div>`);
 
     /* 维护模式：编辑基准节点本身（任何视图下都可用，改的是 data/nodes.js 的内容） */
@@ -3296,6 +3515,7 @@ TT.ui = (function () {
 
     /* 行业判断 */
     sections.push(`<div class="dw-sec"><h3>行业判断</h3><dl class="kv">
+      <dt>生命周期</dt><dd style="color:${lc.color}">${lc.name}　<span style="color:var(--text-faint)">${lc.desc}</span></dd>
       <dt>技术成熟度</dt><dd>${m.maturityById.get(n.maturity)?.name || '—'}　<span style="color:var(--text-faint)">${m.maturityById.get(n.maturity)?.desc || ''}</span></dd>
       <dt>行业普及度</dt><dd>${m.adoptionById.get(n.adoption)?.name || '—'}</dd>
       <dt>自主可控</dt><dd>${m.autonomyById.get(n.autonomy)?.name || '—'}</dd>
@@ -3463,13 +3683,38 @@ TT.ui = (function () {
          <div style="color:var(--text-dim)">${esc(a.project)}</div></div>`).join('')}</div></div>`);
     }
 
+    /* 由底层技术边聚合出本格的前置与后继，缺了这两栏会让人误以为它没有前置 */
+    const inc = new Map(), outg = new Map();
+    S.nodes.forEach(n => (n.deps || []).forEach(d => {
+      const dn = S.byId.get(d); if (!dn) return;
+      const A = m.carrierOf(dn, S.expanded), B = m.carrierOf(n, S.expanded);
+      const self = unitId || ref.id;
+      if (B === self && A !== self) (inc.get(A) || inc.set(A, []).get(A)).push(`${dn.name} → ${n.name}`);
+      if (A === self && B !== self) (outg.get(B) || outg.set(B, []).get(B)).push(`${dn.name} → ${n.name}`);
+    }));
+    const unitName = uid => {
+      const { base, era } = m.splitUnitId(uid);
+      const e = m.tx.eras.find(x => x.id === era);
+      const r = m.capById.get(base) || m.domById.get(base) || S.byId.get(base);
+      return (r ? r.name : uid) + (e ? ` · ${e.roman}` : '');
+    };
+    const listBox = (map, empty) => map.size
+      ? `<div class="chips">${[...map].map(([uid, why]) =>
+          `<span class="chip" data-go="${uid}" title="${esc(why.slice(0, 4).join('\n'))}">${esc(unitName(uid))} <b>${why.length}</b></span>`).join('')}</div>`
+      : `<p style="color:var(--text-faint)">${empty}</p>`;
+
+    sec.push(`<div class="dw-sec"><h3>前置 ${inc.size}</h3>${listBox(inc, '无前置，是本条线的起点')}
+      <p style="color:var(--text-faint);font-size:11.5px;margin-top:6px">数字为底层技术依赖的条数，悬停可看具体是哪几条</p></div>`);
+    sec.push(`<div class="dw-sec"><h3>后继 ${outg.size}</h3>${listBox(outg, '暂无后继，该方向不再被依赖')}</div>`);
+
     sec.push(`<div class="dw-sec"><button class="btn sm" id="dwExpand">在图上展开本${kind === 'domain' ? '领域' : '能力'}</button></div>`);
 
     $('#dwBody').innerHTML = sec.join('');
     $('#dwBody').querySelectorAll('[data-go]').forEach(c => c.onclick = () => {
-      const t = S.byId.get(c.dataset.go);
+      const id = c.dataset.go;
+      const t = S.byId.get(M().splitUnitId(id).base);
       if (t) { S.expanded.add(t._domain); S.expanded.add(t.cap); TT.rebuild(); }
-      S.selected = c.dataset.go; openDrawer(c.dataset.go); api.applyHighlight(); api.centerOn(c.dataset.go, true);
+      S.selected = id; openDrawer(id); api.applyHighlight(); api.centerOn(id, true);
     });
     $('#dwBody').querySelectorAll('[data-open]').forEach(c => c.onclick = () => {
       S.expanded.add(ref.id); S.expanded.add(c.dataset.open);
@@ -3944,6 +4189,7 @@ ${body}
     colorMode: 'maturity',
     tagFilter: '',
     archFilter: new Set(),
+    eraFilter: new Set(),
     legendOff: false,
     search: '',
     selected: null,
@@ -4025,6 +4271,7 @@ ${body}
 
     /* 可见单元 */
     let units = m.visibleUnits(S.nodes, S.expanded, S.h);
+    if (S.eraFilter.size) units = units.filter(u => S.eraFilter.has(u.era));
     if (S.archFilter.size) {
       units = units.filter(u => {
         const arch = u.kind === 'tech' ? u.ref._arch
@@ -4072,13 +4319,21 @@ ${body}
     S.L = TT.layout.compute(units, S.nodes, S.h, S.edges);
     S.units = S.L.units;
 
-    /* 记录上一帧各单元的位置，渲染后做 FLIP 过渡 */
+    /* 渲染前先把即将消失的格子克隆成幽灵，渲染后让它们收回父格 */
     const prev = S.prevPos || new Map();
+    const keep = new Set(S.units.map(u => u.id));
+    const ghosts = [];
+    if (!S.noAnim) {
+      $('#canvas').querySelectorAll('.node').forEach(g => {
+        const id = g.dataset.id;
+        if (keep.has(id) || !prev.has(id)) return;
+        ghosts.push({ id, el: g.cloneNode(true), pos: prev.get(id) });
+      });
+    }
     TT.render.draw($('#canvas'), S.L, S);
-    animateFrom(prev);
-    S.prevPos = new Map(S.units.map(u => [u.id, { x: u.x, y: u.y }]));
+    animateTransition(prev, ghosts);
+    S.prevPos = new Map(S.units.map(u => [u.id, { x: u.x, y: u.y, cx: u.cx, cy: u.cy }]));
     applyTransform();
-    paintProgress();
     paintBreadcrumb();
     paintLegend();
     applyHighlight();
@@ -4086,30 +4341,84 @@ ${body}
   }
   TT.rebuild = rebuild;
 
-  /* FLIP：先按旧位置反向位移，再让浏览器动画归零，得到平滑的展开过渡。
-   * 新出现的节点淡入放大，让「炸开」这一下看得清是从哪里出来的。 */
-  function animateFrom(prev) {
+  /* 展开 / 收拢的过渡动画。
+   * 关键不是「出现和消失」，而是让人看清 **一个格子变成了三个**：
+   * 新出现的子格从父格的旧位置放大出来，收拢时子格反向收回父格的新位置。 */
+  function ancestorsOf(unitId) {
+    const m = M(), { base, era } = m.splitUnitId(unitId);
+    const out = [];
+    const n = S.byId.get(base);
+    if (n) { out.push(n.cap + '@' + n.era, n._domain + '@' + n.era); return out; }
+    const cap = m.capById.get(base);
+    if (cap && era) out.push(cap.domain + '@' + era);
+    return out;
+  }
+  /* 收拢时，一个即将消失的格子会被谁接管 */
+  function successorOf(unitId, newIds) {
+    const m = M(), { base, era } = m.splitUnitId(unitId);
+    const n = S.byId.get(base);
+    const cands = n ? [n.cap + '@' + n.era, n._domain + '@' + n.era]
+      : (m.capById.get(base) && era ? [m.capById.get(base).domain + '@' + era] : []);
+    return cands.find(c => newIds.has(c)) || null;
+  }
+
+  function animateTransition(prevPos, ghosts) {
     if (S.noAnim) return;
     const svg = $('#canvas');
+    const vp = svg.querySelector('.viewport') || svg;
+    const newIds = new Set(S.units.map(u => u.id));
+    const EASE = 'transform .46s cubic-bezier(.22,.9,.3,1), opacity .38s ease';
+
+    /* ① 留下来的格子：FLIP 平移；② 新出现的格子：从父格旧位置放大出来 */
     svg.querySelectorAll('.node').forEach(g => {
       const id = g.dataset.id;
       const now = S.units.find(u => u.id === id); if (!now) return;
-      const old = prev.get(id);
+      const old = prevPos.get(id);
       if (old) {
         const dx = old.x - now.x, dy = old.y - now.y;
         if (Math.abs(dx) < .5 && Math.abs(dy) < .5) return;
         g.style.transition = 'none';
         g.style.transform = `translate(${dx}px,${dy}px)`;
       } else {
+        const from = ancestorsOf(id).map(a => prevPos.get(a)).find(Boolean);
         g.style.transition = 'none';
         g.style.transformOrigin = `${now.cx}px ${now.cy}px`;
-        g.style.transform = 'scale(.82)';
-        g.style.opacity = '0';
+        if (from) {
+          g.style.transform =
+            `translate(${from.cx - now.cx}px,${from.cy - now.cy}px) scale(.42)`;
+          g.style.opacity = '.15';
+        } else {
+          g.style.transform = 'scale(.82)';
+          g.style.opacity = '0';
+        }
       }
     });
+
+    /* ③ 消失的格子：做成幽灵，收回接管它的父格，让「三变一」看得见 */
+    if (ghosts.length) {
+      const layer = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      layer.setAttribute('class', 'ghosts');
+      ghosts.forEach(({ id, el, pos }) => {
+        const to = successorOf(id, newIds);
+        const t = to && S.units.find(u => u.id === to);
+        el.style.transformOrigin = `${pos.cx}px ${pos.cy}px`;
+        el.style.transition = EASE;
+        el.style.pointerEvents = 'none';
+        layer.appendChild(el);
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          el.style.transform = t
+            ? `translate(${t.cx - pos.cx}px,${t.cy - pos.cy}px) scale(.42)`
+            : 'scale(.7)';
+          el.style.opacity = '0';
+        }));
+      });
+      vp.appendChild(layer);
+      setTimeout(() => layer.remove(), 500);
+    }
+
     requestAnimationFrame(() => requestAnimationFrame(() => {
       svg.querySelectorAll('.node').forEach(g => {
-        g.style.transition = 'transform .42s cubic-bezier(.22,.9,.3,1), opacity .34s ease';
+        g.style.transition = EASE;
         g.style.transform = 'translate(0,0)';
         g.style.opacity = '';
       });
@@ -4131,23 +4440,53 @@ ${body}
       const cx = Math.min(Math.max((x0 + x1) / 2, Math.max(x0, 64) + 46), Math.min(x1, W) - 46);
       const hue = c.era.hue ?? 210;
       const col = S.theme === 'B' ? `hsl(${hue},55%,42%)` : `hsl(${hue},72%,64%)`;
-      return `<div class="era-chip" style="left:${cx}px">
+      const eon = S.eraFilter.has(c.era.id);
+      const eoff = S.eraFilter.size && !eon;
+      return `<div class="era-chip ${eoff ? 'dim' : ''} ${eon ? 'on' : ''}" data-era="${c.era.id}"
+                   style="left:${cx}px" title="${eon ? '取消只看' : '只看'}${c.era.name}">
         <div class="rm" style="color:${col}">${c.era.roman}</div>
         <div class="nm">${c.era.name}</div>
         <div class="pd">${c.era.period}</div>
         <div class="ul" style="background:${col}"></div>
       </div>`;
     }).join('');
+    eraBox.querySelectorAll('.era-chip').forEach(c => c.onclick = () => {
+      const e = c.dataset.era;
+      S.eraFilter.has(e) ? S.eraFilter.delete(e) : S.eraFilter.add(e);
+      if (S.eraFilter.size === M().tx.eras.length) S.eraFilter.clear();
+      rebuild(); fit();
+    });
 
+    const m = M(), benchmark = S.orgId === 'benchmark';
     laneBox.innerHTML = S.L.lanes.map(l => {
       const y0 = l.y * k + S.view.y, y1 = (l.y + l.h) * k + S.view.y;
       if (y1 < 0 || y0 > H) return '';
-      const cy = Math.min(Math.max((y0 + y1) / 2, Math.max(y0, 0) + 42), Math.min(y1, H) - 42);
+      const span = Math.min(y1, H) - Math.max(y0, 0);
+      if (span < 64) return '';            /* 泳道露出太少就不贴标签，免得压到相邻泳道 */
+      const w = Math.max(64, Math.min(span - 14, 250));
+      /* 泳道只露出一小截时，标签贴着可见区居中，保证始终看得到完整的架构名 */
+      const lo = Math.max(y0, 0) + w / 2 + 6, hi = Math.min(y1, H) - w / 2 - 6;
+      const cy = lo > hi ? (Math.max(y0, 0) + Math.min(y1, H)) / 2
+                        : Math.min(Math.max((y0 + y1) / 2, lo), hi);
       const col = S.theme === 'B' ? `hsl(${l.hue},58%,44%)` : `hsl(${l.hue},70%,60%)`;
-      const off = S.archFilter.size && !S.archFilter.has(l.id);
-      return `<div class="lane-chip ${off ? 'dim' : ''}" style="top:${cy}px">
-        <span class="cd" style="color:${col}">${l.code}</span> ${l.name}</div>`;
+      const techs = S.nodes.filter(n => n._arch === l.id);
+      const p = benchmark ? m.maturityOf(techs) : m.progressOf(techs);
+      const pct = Math.round(p.pct * 100);
+      const on = S.archFilter.has(l.id);
+      const off = S.archFilter.size && !on;
+      return `<div class="lane-chip ${off ? 'dim' : ''} ${on ? 'on' : ''}" data-arch="${l.id}"
+                   style="top:${cy}px;width:${w}px" title="${on ? '取消只看' : '只看'} ${l.code} ${l.name}">
+        <div class="lc-txt"><span class="cd" style="color:${col}">${l.code}</span> ${l.name}
+          <b style="color:${col}">${pct}%</b></div>
+        <div class="lc-bar"><i style="width:${pct}%;background:${col}"></i></div>
+      </div>`;
     }).join('');
+    laneBox.querySelectorAll('.lane-chip').forEach(c => c.onclick = () => {
+      const a = c.dataset.arch;
+      S.archFilter.has(a) ? S.archFilter.delete(a) : S.archFilter.add(a);
+      if (S.archFilter.size === M().tx.arch.length) S.archFilter.clear();
+      rebuild(); fit();
+    });
   }
 
   function applyTransform() {
@@ -4227,38 +4566,6 @@ ${body}
     });
   }
 
-  /* ---------------- 顶部 5A 进度条 ---------------- */
-  function paintProgress() {
-    const m = M(), box = $('#progressbar');
-    const benchmark = S.orgId === 'benchmark';
-    box.innerHTML = m.tx.arch.map(a => {
-      const techs = S.nodes.filter(n => n._arch === a.id);
-      const p = benchmark ? m.maturityOf(techs) : m.progressOf(techs);
-      const color = S.theme === 'B' ? `hsl(${a.hue},58%,40%)` : `hsl(${a.hue},70%,58%)`;
-      const sub = benchmark
-        ? `${techs.length} 项 · 平均成熟度`
-        : `${p.stat?.built || 0}/${techs.length} 已建成`;
-      return `<div class="pb-cell" data-arch="${a.id}" title="${a.desc}">
-        <div class="pb-top"><span class="pb-name">${a.code} ${a.name}</span>
-          <span class="pb-pct">${Math.round(p.pct * 100)}%</span></div>
-        <div class="pb-track"><div class="pb-fill" style="width:${(p.pct * 100).toFixed(1)}%;background:${color}"></div></div>
-        <div class="pb-name" style="font-size:10.5px;opacity:.65">${sub}</div>
-      </div>`;
-    }).join('');
-    /* 点击 = 只看这一条架构线，再点一次取消；支持多选叠加 */
-    box.querySelectorAll('.pb-cell').forEach(c => {
-      c.classList.toggle('dim', S.archFilter.size > 0 && !S.archFilter.has(c.dataset.arch));
-      c.title = (S.archFilter.has(c.dataset.arch) ? '取消只看' : '只看') +
-        c.querySelector('.pb-name').textContent + '（可多选）';
-      c.onclick = () => {
-        const a = c.dataset.arch;
-        S.archFilter.has(a) ? S.archFilter.delete(a) : S.archFilter.add(a);
-        if (S.archFilter.size === m.tx.arch.length) S.archFilter.clear();
-        rebuild(); fit();
-      };
-    });
-  }
-
   /* ---------------- 面包屑 ---------------- */
   function paintBreadcrumb() {
     const m = M(), open = [...S.expanded];
@@ -4298,6 +4605,10 @@ ${body}
       title = '技术成熟度（行业整体）';
       m.tx.maturity.forEach(s => rows.push([s.color, s.name]));
       note = '默认视图为世界金融科技基准，不代表任何一家机构的现状';
+    } else if (mode === 'lifecycle') {
+      title = '技术生命周期';
+      m.tx.lifecycle.forEach(l => rows.push([l.color, l.name]));
+      note = '斜纹底 = 已被替代或正在退役。<b>成熟度高不等于还该投入</b>——集中式核心就是成熟期 + 退役中';
     } else if (mode === 'autonomy') {
       title = '信创自主可控';
       m.tx.autonomy.forEach(s => rows.push([s.color, s.name]));
@@ -4385,20 +4696,31 @@ ${body}
       S.hover = null; applyHighlight();
     });
 
+    /* 单击语义按节点类型分开，彻底避开「双击必然先触发单击」的冲突：
+     *   聚合格   单击 = 下钻展开；单击右上角 ⓘ = 看详情
+     *   技术节点 单击 = 看详情（它本来就没有下钻）
+     *   任意节点 双击 = 收拢一级
+     * 这样展开与看详情永远不会落在同一个手势上。 */
     svg.addEventListener('click', e => {
       if (drag && drag.moved) return;
       const g = e.target.closest('.node');
       if (!g) { S.selected = null; TT.ui.closeDrawer(); applyHighlight(); return; }
-      const id = g.dataset.id;
+      const id = g.dataset.id, kind = g.dataset.kind;
       if (S.planMode) return togglePlanTarget(id);
-      S.selected = id;
-      TT.ui.openDrawer(id);
-      applyHighlight();
+      const wantInfo = kind === 'tech' || !!e.target.closest('.info-dot');
+      if (wantInfo) {
+        S.selected = id;
+        TT.ui.openDrawer(id);
+        applyHighlight();
+      } else {
+        toggleUnit(id, kind, 'expand');
+      }
     });
 
     svg.addEventListener('dblclick', e => {
       const g = e.target.closest('.node'); if (!g) return;
-      toggleUnit(g.dataset.id, g.dataset.kind);
+      e.preventDefault();
+      toggleUnit(g.dataset.id, g.dataset.kind, 'collapse');
     });
 
     window.addEventListener('resize', () => { applyTransform(); drawStars(); });
@@ -4407,20 +4729,26 @@ ${body}
   /* 展开 / 收拢同一个入口：
    * 领域格 → 展开为能力格；能力格 → 展开为技术节点；
    * 技术节点 → 收拢回它所属的能力格（再双击一次收回领域格）。 */
-  function toggleUnit(unitId, kind) {
+  function toggleUnit(unitId, kind, intent) {
     const m = M();
     const { base } = m.splitUnitId(unitId);
     let focus = base;
 
-    if (kind === 'tech') {
-      const n = S.byId.get(base); if (!n) return;
-      if (S.expanded.has(n.cap)) { S.expanded.delete(n.cap); focus = n.cap; }
-      else { S.expanded.delete(n._domain); focus = n._domain; }
-    } else if (S.expanded.has(base)) {
-      S.expanded.delete(base);
-      if (m.domById.has(base))
-        m.tx.capabilities.filter(c => c.domain === base).forEach(c => S.expanded.delete(c.id));
+    if (kind === 'tech' || intent === 'collapse') {
+      const n = kind === 'tech' ? S.byId.get(base) : null;
+      if (n) {
+        if (S.expanded.has(n.cap)) { S.expanded.delete(n.cap); focus = n.cap; }
+        else { S.expanded.delete(n._domain); focus = n._domain; }
+      } else if (S.expanded.has(base)) {
+        S.expanded.delete(base);
+        if (m.domById.has(base))
+          m.tx.capabilities.filter(c => c.domain === base).forEach(c => S.expanded.delete(c.id));
+      } else if (m.capById.has(base)) {
+        S.expanded.delete(m.capById.get(base).domain);
+        focus = m.capById.get(base).domain;
+      } else return;
     } else {
+      if (S.expanded.has(base)) return;   /* 已展开的格子不会再出现，无需处理 */
       S.expanded.add(base);
     }
 
