@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="A">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>金融科技树 · Banking FinTech Tech Tree</title>
+<link rel="stylesheet" href="assets/styles.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ============ 顶栏 ============ -->
+  <div id="topbar">
+    <div class="brand">
+      <h1>金融科技树</h1>
+      <span class="sub">Banking FinTech Tech Tree · 5A 企业级架构</span>
+    </div>
+
+    <div class="tb-sep"></div>
+    <div class="tb-group">
+      <span class="tb-label">单位</span>
+      <select id="orgSel" class="btn"></select>
+    </div>
+
+    <div class="tb-group">
+      <span class="tb-label">粒度</span>
+      <div class="seg" id="levelSeg">
+        <button class="btn" data-level="domain">领域</button>
+        <button class="btn" data-level="cap">能力</button>
+        <button class="btn" data-level="tech">技术</button>
+      </div>
+    </div>
+
+    <div class="tb-group">
+      <span class="tb-label">着色</span>
+      <select id="colorSel" class="btn">
+        <option value="status">建设状态 / 成熟度</option>
+        <option value="maturity">技术成熟度</option>
+        <option value="autonomy">信创自主可控</option>
+        <option value="value">业务价值</option>
+        <option value="award">金融科技发展奖</option>
+        <option value="gap">与基准的差距</option>
+      </select>
+    </div>
+
+    <div class="tb-group">
+      <span class="tb-label">专题</span>
+      <select id="tagSel" class="btn"><option value="">全部节点</option></select>
+    </div>
+
+    <div class="tb-sep"></div>
+    <div class="tb-group">
+      <input id="search" class="btn search" type="search" placeholder="搜索技术 / ID…" autocomplete="off">
+      <button class="btn" id="btnPlan" title="选择目标技术，自动反推依赖路径并生成路线图">规划模式</button>
+      <button class="btn" id="btnHeat" title="历年金融科技发展奖的领域分布热力图">奖项热力</button>
+      <button class="btn" id="btnPresent" title="按时代逐幕点亮，用于汇报讲演进">演示</button>
+      <button class="btn" id="btnExport">导出 ▾</button>
+      <button class="btn" id="btnMaintain" title="在页面里直接编辑节点，改完导出数据文件">维护</button>
+      <button class="btn" id="btnTheme" title="深空科技风 / 银行专业风">主题 A</button>
+      <button class="btn" id="btnHelp">?</button>
+      <span id="validBadge"></span>
+    </div>
+  </div>
+
+  <!-- ============ 5A 分线进度条 ============ -->
+  <div id="progressbar"></div>
+
+  <!-- ============ 画布 ============ -->
+  <div id="stage">
+    <canvas id="stars"></canvas>
+    <svg id="canvas" xmlns="http://www.w3.org/2000/svg"></svg>
+
+    <div id="breadcrumb"></div>
+
+    <div id="legend"></div>
+
+    <div id="zoomctl">
+      <button class="btn" id="zIn" title="放大">＋</button>
+      <button class="btn" id="zOut" title="缩小">－</button>
+      <button class="btn" id="zFit" title="适应窗口">⤢</button>
+    </div>
+
+    <div id="hint">滚轮缩放 · 拖拽平移 · 悬停看依赖链 · 单击看详情 · 双击展开下钻</div>
+
+    <!-- 详情抽屉 -->
+    <div id="drawer">
+      <div class="dw-head">
+        <div class="row">
+          <div style="min-width:0">
+            <h2 id="dwTitle">—</h2>
+            <div class="en" id="dwEn"></div>
+          </div>
+          <button class="btn sm ghost" id="dwClose">✕</button>
+        </div>
+        <div class="dw-tags" id="dwTags"></div>
+      </div>
+      <div class="dw-body" id="dwBody"></div>
+    </div>
+
+    <!-- 演示模式 -->
+    <div id="presenter">
+      <div class="p-dots" id="pDots"></div>
+      <h2 id="pTitle"></h2>
+      <div class="p-sub" id="pSub"></div>
+      <div class="p-body" id="pBody"></div>
+      <div class="p-ctl">
+        <button class="btn" id="pPrev">← 上一幕</button>
+        <button class="btn" id="pNext">下一幕 →</button>
+        <button class="btn" id="pExit">退出演示 (Esc)</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="modals"></div>
+
+<!-- 数据文件（与代码彻底分离，维护科技树只需改 data/ 下的文件） -->
+<script src="data/taxonomy.js"></script>
+<script src="data/nodes.js"></script>
+<script src="data/awards.js"></script>
+<script src="data/orgs/index.js"></script>
+
+<!-- 程序 -->
+<script src="assets/validator.js"></script>
+<script src="assets/model.js"></script>
+<script src="assets/layout.js"></script>
+<script src="assets/render.js"></script>
+<script src="assets/ui.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
